@@ -1132,14 +1132,23 @@ body::before {
     progressBar.style.width = pct + '%';
   }, { passive: true });
 
-  /* ── Arrow-key scrolling ── */
+  /* ── Keyboard navigation (section-by-section, centered) ── */
+  function navigateToStep(step) {
+    var clamped = Math.max(1, Math.min(step, sections.length));
+    var section = document.querySelector('.section[data-step="' + clamped + '"]');
+    if (section) section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    var forward = e.key === 'ArrowDown' || e.key === 'PageDown'
+               || (e.key === ' ' && !e.shiftKey);
+    var backward = e.key === 'ArrowUp' || e.key === 'PageUp'
+                || (e.key === ' ' && e.shiftKey);
+
+    if (forward || backward) {
       e.preventDefault();
-      window.scrollBy({
-        top: e.key === 'ArrowDown' ? 80 : -80,
-        behavior: 'smooth'
-      });
+      var next = (currentStep || 1) + (forward ? 1 : -1);
+      navigateToStep(next);
     }
   });
 

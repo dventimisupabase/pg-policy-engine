@@ -56,9 +56,132 @@ No runtime dependencies are installed on the target database. pgpe connects as a
 
 ## Project Status
 
-**Current phase: pre-implementation.** The specification is complete and the implementation is planned but not yet started.
+**MVP implemented.** The core governance pipeline is complete — parsing, normalization, analysis, compilation, application, introspection, drift detection, and reconciliation all work end-to-end. The extensible proof framework ships with 9 proof types. Tests are passing.
 
-See the [Technical Implementation Plan](spec/implementation-plan.md) for milestone details and the PoC roadmap.
+See the [Technical Implementation Plan](spec/implementation-plan.md) for milestone details.
+
+## Quick Start
+
+```bash
+# Build
+./gradlew build
+
+# Analyze policies against a live database (exits 1 on proof failure)
+pgpe analyze --policy-dir policies/ --target postgresql://user:pass@localhost:5432/mydb
+
+# Compile policies to SQL
+pgpe compile --policy-dir policies/ --target postgresql://user:pass@localhost:5432/mydb
+
+# Apply policies (with dry-run preview)
+pgpe apply --policy-dir policies/ --target postgresql://user:pass@localhost:5432/mydb --dry-run
+
+# Detect drift and reconcile
+pgpe monitor --policy-dir policies/ --target postgresql://user:pass@localhost:5432/mydb --reconcile
+```
+
+## CLI Reference
+
+### `pgpe analyze`
+
+Run proof obligations against policies and a live schema.
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--policy-dir` | yes | — | Directory containing `.policy` files |
+| `--target` | yes | — | PostgreSQL connection URL |
+| `--format` | no | `text` | Output format: `text` or `json` |
+| `--proofs` | no | — | Comma-separated proof IDs to run (whitelist) |
+| `--disable-proofs` | no | — | Comma-separated proof IDs to skip |
+
+Exits with code **1** if any proof fails.
+
+### `pgpe compile`
+
+Compile policies to `CREATE POLICY` SQL.
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--policy-dir` | yes | — | Directory containing `.policy` files |
+| `--target` | yes | — | PostgreSQL connection URL |
+| `--format` | no | `text` | Output format: `text` or `json` |
+
+### `pgpe apply`
+
+Execute compiled DDL against the target database.
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--policy-dir` | yes | — | Directory containing `.policy` files |
+| `--target` | yes | — | PostgreSQL connection URL |
+| `--dry-run` | no | off | Print SQL without executing |
+
+### `pgpe monitor`
+
+Introspect live policies, detect drift from intended state.
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--policy-dir` | yes | — | Directory containing `.policy` files |
+| `--target` | yes | — | PostgreSQL connection URL |
+| `--format` | no | `text` | Output format: `text` or `json` |
+| `--reconcile` | no | off | Emit remediation SQL for detected drift |
+
+Exits with code **1** if drift is detected.
+
+## Proof Types
+
+All 9 proofs are registered in `ProofRegistry`. Use `--proofs` to run only specific proofs, or `--disable-proofs` to skip specific ones.
+
+| ID | Default | Description |
+|----|---------|-------------|
+| `tenant-isolation` | on | Proves no cross-tenant row access via SMT satisfiability check |
+| `coverage` | on | Detects tables/commands with no governing policy |
+| `contradiction` | on | Finds unsatisfiable effective predicates (always-false policies) |
+| `soft-delete` | on | Checks for deleted-row leakage (soft-delete columns still visible) |
+| `subsumption` | on | Detects when one policy is a strict superset of another |
+| `redundancy` | on | Identifies policies that can be removed without changing behavior |
+| `write-restriction` | on | Checks that write predicates don't exceed read predicates |
+| `role-separation` | off | Proves disjoint access between role pairs; requires `rolePairs` in config |
+| `policy-equivalence` | off | Proves two policy sets produce identical access; requires `comparePolicySet` in config |
+
+## Policy DSL
+
+Policies are written in `.policy` files using a restricted DSL. The grammar supports:
+
+- **Policy types:** `PERMISSIVE` (grant access) or `RESTRICTIVE` (deny access)
+- **Commands:** `SELECT`, `INSERT`, `UPDATE`, `DELETE` (comma-separated)
+- **Selectors:** `ALL`, `has_column('col')`, `has_column('col', type)`, `in_schema('schema')`, `named('table')`, `tagged('tag')` — combinable with `AND`/`OR`
+- **Clauses:** conjunctions of atoms, with `OR CLAUSE` for disjunction
+- **Value sources:** `col('name')`, `session('setting')`, `lit(value)`, `fn('name', [args])`
+- **Operators:** `=`, `!=`, `<`, `>`, `<=`, `>=`, `IN`, `NOT IN`, `LIKE`, `NOT LIKE`, `IS NULL`, `IS NOT NULL`
+- **Traversals:** `exists(rel(source, fk_table, fk_col, pk_col), { clause })`
+- **Literals:** strings, integers, booleans, `null`, lists (`[1, 2, 3]`)
+- **Comments:** `// line` and `/* block */`
+
+Example — a restrictive soft-delete filter combined with a permissive tenant isolation policy:
+
+```
+POLICY tenant_isolation
+  PERMISSIVE
+  FOR SELECT, INSERT, UPDATE, DELETE
+  SELECTOR has_column('tenant_id')
+  CLAUSE col('tenant_id') = session('app.tenant_id')
+
+POLICY hide_deleted
+  RESTRICTIVE
+  FOR SELECT
+  SELECTOR has_column('deleted_at', timestamp)
+  CLAUSE col('deleted_at') IS NULL
+```
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success — all proofs passed / no drift detected |
+| `1` | Failure — proof failure (`analyze`) or drift detected (`monitor`) |
+
+Designed for CI/CD gates: `pgpe analyze ... || exit 1`
 
 ## Documentation
 

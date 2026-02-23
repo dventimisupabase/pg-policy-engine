@@ -1,0 +1,21 @@
+POLICY tenant_isolation
+  PERMISSIVE
+  FOR SELECT, INSERT, UPDATE, DELETE
+  SELECTOR has_column(tenant_id)
+  CLAUSE col(tenant_id) = session('app.tenant_id')
+
+POLICY tenant_isolation_via_project
+  PERMISSIVE
+  FOR SELECT, INSERT, UPDATE, DELETE
+  SELECTOR named('tasks') OR named('files')
+  CLAUSE
+    exists(
+      rel(_, project_id, projects, id),
+      {col(tenant_id) = session('app.tenant_id')}
+    )
+
+POLICY soft_delete
+  RESTRICTIVE
+  FOR SELECT
+  SELECTOR has_column(is_deleted)
+  CLAUSE col(is_deleted) = lit(false)
