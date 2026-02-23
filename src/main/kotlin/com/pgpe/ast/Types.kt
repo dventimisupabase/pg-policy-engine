@@ -81,30 +81,34 @@ data class PolicySet(val policies: List<Policy>)
 
 enum class SatResult { SAT, UNSAT, UNKNOWN }
 
-data class IsolationResult(
-    val table: String,
-    val command: Command,
-    val status: SatResult,
-    val counterexample: Map<String, String>? = null
-)
-
-data class ContradictionResult(
-    val table: String,
-    val command: Command,
-    val message: String
-)
-
-data class SubsumptionResult(
-    val subsumingPolicy: String,
-    val subsumedPolicy: String,
-    val table: String
-)
-
 data class AnalysisReport(
-    val isolationResults: List<IsolationResult>,
-    val contradictions: List<ContradictionResult>,
-    val subsumptions: List<SubsumptionResult>
-)
+    val results: List<com.pgpe.analysis.ProofResult>
+) {
+    // Backward-compatible accessors
+    val isolationResults: List<com.pgpe.analysis.ProofResult.IsolationResult>
+        get() = results.filterIsInstance<com.pgpe.analysis.ProofResult.IsolationResult>()
+
+    val contradictions: List<com.pgpe.analysis.ProofResult.ContradictionResult>
+        get() = results.filterIsInstance<com.pgpe.analysis.ProofResult.ContradictionResult>()
+
+    val subsumptions: List<com.pgpe.analysis.ProofResult.SubsumptionResult>
+        get() = results.filterIsInstance<com.pgpe.analysis.ProofResult.SubsumptionResult>()
+
+    val allPassed: Boolean
+        get() = results.none { result ->
+            when (result) {
+                is com.pgpe.analysis.ProofResult.IsolationResult -> result.status != SatResult.UNSAT
+                is com.pgpe.analysis.ProofResult.ContradictionResult -> true
+                is com.pgpe.analysis.ProofResult.CoverageResult -> !result.hasPolicies || result.missingCommands.isNotEmpty()
+                is com.pgpe.analysis.ProofResult.SoftDeleteResult -> result.status == SatResult.SAT
+                is com.pgpe.analysis.ProofResult.SubsumptionResult -> true
+                is com.pgpe.analysis.ProofResult.RedundancyResult -> true
+                is com.pgpe.analysis.ProofResult.WriteRestrictionResult -> result.status == SatResult.SAT
+                is com.pgpe.analysis.ProofResult.RoleSeparationResult -> result.status == SatResult.SAT
+                is com.pgpe.analysis.ProofResult.PolicyEquivalenceResult -> !result.equivalent
+            }
+        }
+}
 
 // --- Compilation Output ---
 

@@ -134,6 +134,15 @@ class SmtEncoder(private val ctx: Context) {
         return ctx.mkAnd(joinCond, innerCond)
     }
 
+    fun assertDistinctLiterals(solver: com.microsoft.z3.Solver) {
+        val litVars = varCache.entries
+            .filter { it.key.startsWith("lit_") }
+            .map { it.value }
+        if (litVars.size > 1) {
+            solver.add(ctx.mkDistinct(*litVars.toTypedArray()))
+        }
+    }
+
     fun encodeClause(
         clause: Clause,
         sessionPrefix: String,

@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
+import com.pgpe.analysis.ProofConfig
 import com.pgpe.analysis.analyze
 import com.pgpe.ast.*
 import com.pgpe.compiler.SqlCompiler
@@ -26,11 +27,18 @@ class AnalyzeCommand : CliktCommand(name = "analyze") {
     private val policyDir by option("--policy-dir").required()
     private val target by option("--target").required()
     private val format by option("--format").default("text")
+    private val proofs by option("--proofs", help = "Comma-separated list of proof IDs to run")
+    private val disableProofs by option("--disable-proofs", help = "Comma-separated list of proof IDs to skip")
 
     override fun run() {
         val policySet = loadPolicies(policyDir)
         val metadata = introspectSchema(target)
-        val report = analyze(policySet, metadata)
+
+        val config = ProofConfig(
+            enabledProofs = proofs?.split(",")?.map { it.trim() }?.toSet() ?: emptySet(),
+            disabledProofs = disableProofs?.split(",")?.map { it.trim() }?.toSet() ?: emptySet()
+        )
+        val report = analyze(policySet, metadata, config)
 
         if (format == "json") {
             echo(Formatters.formatAnalysisJson(report))
@@ -38,7 +46,7 @@ class AnalyzeCommand : CliktCommand(name = "analyze") {
             echo(Formatters.formatAnalysisText(report))
         }
 
-        if (report.isolationResults.any { it.status != SatResult.UNSAT }) {
+        if (!report.allPassed) {
             throw com.github.ajalt.clikt.core.ProgramResult(1)
         }
     }

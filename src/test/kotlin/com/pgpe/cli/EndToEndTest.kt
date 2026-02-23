@@ -1,6 +1,7 @@
 package com.pgpe.cli
 
 import com.github.ajalt.clikt.core.subcommands
+import com.pgpe.analysis.ProofResult
 import com.pgpe.analysis.analyze
 import com.pgpe.ast.*
 import com.pgpe.compiler.SqlCompiler
@@ -147,11 +148,13 @@ class EndToEndTest {
     @Test
     fun `formatters produce valid output`() {
         val report = AnalysisReport(
-            isolationResults = listOf(
-                IsolationResult("users", Command.SELECT, SatResult.UNSAT)
-            ),
-            contradictions = emptyList(),
-            subsumptions = emptyList()
+            results = listOf(
+                ProofResult.IsolationResult(
+                    table = "users",
+                    command = Command.SELECT,
+                    status = SatResult.UNSAT
+                )
+            )
         )
 
         val text = Formatters.formatAnalysisText(report)
