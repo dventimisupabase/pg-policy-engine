@@ -139,6 +139,60 @@ The engine must detect drift (Section 11.2–11.4) and reconcile (Section 11.5):
   alert (notify operators), quarantine (restrict access pending review)
   (Section 11.5)
 
+#### 1.6.1 Design Constraint: Leave No Trace
+
+The engine leaves no artifacts on the target database beyond the RLS policies
+themselves — `CREATE POLICY`, `ALTER TABLE ... ENABLE/FORCE ROW LEVEL SECURITY`,
+and `GRANT` statements.  Specifically, the engine does not install:
+
+- `COMMENT` tags on policies or tables
+- Helper functions (PL/pgSQL or otherwise)
+- Introspection functions
+- Metadata tables or schemas
+
+This constraint rules out PL/pgSQL Roles C and D on the target database
+(strengthening the assessment in Section 3.2): the engine does not install
+server-side helpers for introspection or runtime access checking.  The
+introspection queries from Section 11.4 are executed remotely by the engine via
+the PostgreSQL client library — no server-side functions are needed.
+
+**Rationale**: The engine must be safe to point at any PostgreSQL database
+without requiring installation privileges beyond policy management (`CREATE
+POLICY`, `ALTER TABLE`, `GRANT`).  A leave-no-trace design ensures the engine
+never creates a deployment dependency on the target database and never risks
+interfering with the governed system's own objects.
+
+#### 1.6.2 Policy Ownership Identification
+
+The monitor phase (Section 11) must distinguish engine-authored policies from
+human-written or third-party policies already present on the target database.
+The leave-no-trace constraint (Section 1.6.1) rules out database-side tagging
+mechanisms (e.g., `COMMENT` annotations, metadata tables).  Instead,
+engine-authored policies are identified by **name-matching against the compiled
+expected state**.
+
+The mechanism works as follows:
+
+1. **Compile**: The engine compiles `.policy` files into an expected state E — a
+   set of policy names (following the `<policy_name>_<table_name>` naming
+   convention from Section 10.6) paired with their expected SQL expressions.
+2. **Introspect**: The engine queries `pg_policies` for the observed state O on
+   governed tables.
+3. **Classify**: For each policy in O on a governed table:
+   - If the policy name appears in E, it is **managed** — subject to
+     `missing_policy` and `modified_policy` drift checks.
+   - If the policy name does not appear in E, it is **foreign** — classified as
+     `extra_policy` (Warning severity) and reported without further analysis.
+4. **Diff**: For managed policies, the engine compares the observed
+   USING/CHECK expression strings against the expected strings (see Open
+   Question 8.1 for comparison strategies).
+
+The engine never attempts to parse observed USING/CHECK expressions back into
+the constraint DSL.  It never performs semantic analysis of any policy —
+managed or foreign.  All comparisons are mechanical: name lookup and string
+diffing.  This preserves the "don't analyze RLS — generate it" principle: the
+monitor phase does bookkeeping, not reverse engineering.
+
 ### 1.7 Policy Storage
 
 The spec assumes a policy set `S` exists but does not prescribe a storage
@@ -525,26 +579,32 @@ AS $$ ... $$ LANGUAGE plpgsql;
 - The introspection queries (Section 11.4) are straightforward SQL that
   any PostgreSQL client can execute without helper functions
 
-**Assessment**: The disadvantages outweigh the advantages for an MVP.  The
-introspection queries are simple enough to execute from the client language.
-This role might become valuable in a Phase 2+ multi-database deployment
-where a thin agent on each target reduces chattiness.
+**Assessment**: **Ruled out by the leave-no-trace constraint** (Section 1.6.1).
+The engine does not install any functions, schemas, or other objects on the
+target database.  The introspection queries from Section 11.4 are straightforward
+SQL that the engine executes remotely via the PostgreSQL client library — no
+server-side helpers are needed.  In a Phase 2+ multi-database deployment, a
+thin monitoring agent could run the same remote queries without requiring
+target-side installation.
 
-#### Role D: Runtime Policy Functions (Orthogonal)
+#### Role D: Runtime Policy Functions (Ruled Out)
 
 A `check_access(table_name, user_id)` function callable from application code
 is conceptually interesting but orthogonal to the engine.  It duplicates what
-RLS already provides at the database level.  It could be useful for debugging
-or UI integration but is not an engine requirement.
+RLS already provides at the database level.  More importantly, it is **ruled
+out by the leave-no-trace constraint** (Section 1.6.1): the engine does not
+install functions on the target database.  If runtime access checking is
+needed for debugging or UI integration, it must be provided by the application
+layer or by a separate tool, not by the policy engine.
 
 ### 3.3 Summary: PL/pgSQL as a Spectrum
 
-| Role                        | Where it runs | Separation preserved? | Recommended phase |
-|-----------------------------|---------------|-----------------------|-------------------|
-| A. Compilation target       | Target DB     | Yes (engine-managed)  | PoC / Phase 1     |
-| B. Control DB logic         | Control DB    | Yes (engine-owned)    | Phase 1+          |
-| C. Introspection helpers    | Target DB     | Partially             | Phase 2+          |
-| D. Runtime policy functions | Target DB     | Orthogonal            | Phase 3+          |
+| Role                        | Where it runs | Separation preserved? | Status                           |
+|-----------------------------|---------------|-----------------------|----------------------------------|
+| A. Compilation target       | Target DB     | Yes (engine-managed)  | Recommended (PoC / Phase 1)     |
+| B. Control DB logic         | Control DB    | Yes (engine-owned)    | Appropriate (Phase 1+)          |
+| C. Introspection helpers    | Target DB     | Partially             | Ruled out (leave-no-trace, 1.6.1)|
+| D. Runtime policy functions | Target DB     | Orthogonal            | Ruled out (leave-no-trace, 1.6.1)|
 
 PL/pgSQL is best understood as a **supplementary component**, not a primary
 implementation language.  Its role grows as the deployment model matures,
@@ -898,16 +958,29 @@ But `pg_policies.qual` may return:
 ```
 
 **Options**:
-- **Textual normalization**: strip whitespace, normalize quoting, and
-  compare strings.  Fragile across PostgreSQL versions.
-- **AST comparison**: parse both expressions back to an AST and compare
-  structurally.  Requires a SQL expression parser (not the DSL parser).
-- **Recompile-and-compare**: always drop and recreate policies, treating
-  the compiled output as the source of truth.  Avoids comparison entirely
-  but makes every reconciliation cycle destructive.
+- **Option 1: Textual normalization** — strip whitespace, normalize quoting,
+  and compare strings.  Fragile across PostgreSQL versions.
+- **Option 2: AST comparison** — parse both expressions back to an AST and
+  compare structurally.  Requires a SQL expression parser (not the DSL parser).
+- **Option 3: Recompile-and-compare** — always drop and recreate policies,
+  treating the compiled output as the source of truth.  Avoids comparison
+  entirely but makes every reconciliation cycle destructive.
+- **Option 4: Hash-based comparison** — at compile time, the engine records a
+  hash of the expected SQL expression string.  At monitor time, it round-trips
+  the expression through PostgreSQL: `CREATE POLICY` in a transaction, read
+  back the decompiled form from `pg_policies`, then `ROLLBACK`.  The
+  decompiled form is compared to the observed expression.  This sidesteps the
+  normalization problem entirely by letting PostgreSQL be the normalizer.
+  Trade-off: requires a transaction per policy check, which may be too
+  expensive for large policy sets.
 
-The PoC should test all three approaches against a real PostgreSQL instance
-to determine which is reliable.
+**Scope note**: regardless of comparison strategy, expression comparison is
+only attempted for **managed** policies — those whose names match the compiled
+expected state (Section 1.6.2).  Foreign policies (names not in the expected
+state) are reported as `extra_policy` without expression comparison.
+
+The PoC should test these approaches against a real PostgreSQL instance to
+determine which is reliable.
 
 ### 8.2 Session Variable Type Casting
 
