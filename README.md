@@ -69,6 +69,7 @@ See the [Technical Implementation Plan](spec/implementation-plan.md) for milesto
 | [Product Requirements Document](spec/product-requirements.md) | Personas, user stories, and project scope |
 | [Design Document](spec/design.md) | Modules, data structures, contracts, and data flow |
 | [Technical Implementation Plan](spec/implementation-plan.md) | Milestones, dependencies, and development setup |
+| [MVP Extension Risk Review](spec/mvp-extension-risk-review.md) | Lock-in risks and forward-compatibility guardrails for TrustLogix-style evolution |
 
 **Interactive explainer:** [visual walkthrough of the policy algebra](https://dventimisupabase.github.io/pg-policy-engine/explainer/index.html).
 
