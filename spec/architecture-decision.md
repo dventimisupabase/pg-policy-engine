@@ -2,7 +2,7 @@
 
 **Version**: 1.0
 **Date**: 2026-02-22
-**Status**: Draft — No Recommendation Made
+**Status**: Accepted — Kotlin (JVM) recommended
 
 ---
 
@@ -185,7 +185,7 @@ The mechanism works as follows:
      `extra_policy` (Warning severity) and reported without further analysis.
 4. **Diff**: For managed policies, the engine compares the observed
    USING/CHECK expression strings against the expected strings (see Open
-   Question 8.1 for comparison strategies).
+   Question 9.1 for comparison strategies).
 
 The engine never attempts to parse observed USING/CHECK expressions back into
 the constraint DSL.  It never performs semantic analysis of any policy —
@@ -381,7 +381,7 @@ connection pool configuration requires additional libraries (`HikariCP`).
 #### Prototyping Speed
 
 How quickly a single developer can build a working vertical slice (the PoC
-defined in Section 7 below).
+defined in Section 8 below).
 
 **Python — A+**.  Dynamic typing, REPL-driven development, extensive standard
 library, and the fastest path from spec to working code.  The trade-off is
@@ -737,7 +737,7 @@ rather than a single-user CLI tool.  It aligns with Role B from Section 3.2
 
 ## 6. Analysis Summary
 
-This section synthesizes the evaluation without making a recommendation.
+This section synthesizes the evaluation.  The recommendation follows in Section 7.
 
 ### 6.1 Viable vs. Disqualified
 
@@ -805,7 +805,7 @@ choice of core language does not constrain PL/pgSQL's supplementary roles.
 
 ### 6.4 Proof-of-Concept Sizing
 
-For each viable candidate, the estimated PoC scope (Section 7) breaks down
+For each viable candidate, the estimated PoC scope (Section 8) breaks down
 roughly as follows:
 
 | Component                      | Python          | Rust            | Java/Kotlin      | Clojure               |
@@ -822,13 +822,184 @@ for a production implementation.
 
 ---
 
-## 7. Proof-of-Concept Scope
+## 7. Implementation Language Recommendation
+
+The evaluation in Section 2 identifies four viable candidates; the analysis
+in Section 6 maps the key trade-off axes.  This section resolves the
+decision.
+
+**Recommendation: Kotlin on the JVM.**
+
+Kotlin is not the top-graded language in any single evaluation dimension,
+but it is the only candidate that scores B or above in *every* dimension —
+no critical weakness, no disqualifying gap.  For a production-targeted
+implementation by a JVM-familiar developer, this balanced profile dominates
+the alternatives.
+
+### 7.1 Why JVM over Python
+
+Python leads in prototyping speed (A+) and SMT integration (A), but two
+structural liabilities make it a poor fit for a production build:
+
+- **Packaging (C+)**.  `pyinstaller` and `shiv` bundles are fragile,
+  platform-specific, and large.  The Z3 native dependency compounds the
+  problem — distributing a CLI tool that embeds a C library via pip is a
+  well-known pain point.  JVM languages avoid this entirely: jpackage
+  produces native installers and z3-turnkey bundles the Z3 shared libraries
+  into a single JAR.
+
+- **No exhaustiveness checking**.  The policy algebra's layered AST (value
+  sources, atoms, clauses, selectors) demands exhaustive dispatch — every
+  match over atom types must handle every variant.  Python's `match/case`
+  (3.10+) is syntactically capable but the compiler does not verify
+  exhaustiveness.  Kotlin's `when` expressions over `sealed class`
+  hierarchies are checked at compile time.
+
+Python remains the fastest path to a throwaway prototype, but the decision
+constraint is *build for production*, not *validate feasibility*.
+
+### 7.2 Why JVM over Rust
+
+Rust leads in AST modeling (A), packaging (A+), and long-term correctness
+guarantees.  Two factors tip the balance toward JVM:
+
+- **SMT integration friction (B vs. B+)**.  The `z3` crate requires the Z3
+  shared library at build time and complicates cross-compilation.  On the
+  JVM, Z3's official Java bindings are a Maven dependency, and z3-turnkey
+  eliminates native library distribution entirely.  The difference is not
+  capability but friction — Rust *can* use Z3, but every build and CI
+  pipeline must solve the native dependency.
+
+- **Prototyping speed (C vs. B-)**.  Rust's borrow checker and compile times
+  impose a significant upfront cost.  For a project that must traverse
+  parsing → normalization → SMT encoding → compilation → introspection →
+  drift detection, the cumulative overhead is substantial.  The developer's
+  JVM familiarity further widens this gap.
+
+Rust would be the strongest choice if packaging and long-term correctness
+were the only concerns.  The production build constraint favors Rust, but
+the breadth of the engine (six major subsystems) and the developer's
+existing JVM expertise favor a language with faster iteration.
+
+### 7.3 Why Kotlin over Clojure
+
+Both run on the JVM and share the same SMT integration (B+), PostgreSQL
+client (JDBC), and packaging story (jpackage + z3-turnkey).  Four factors
+differentiate them:
+
+- **Compile-time type safety**.  Kotlin's `sealed class` hierarchies provide
+  exhaustive pattern matching verified by the compiler.  Clojure's
+  `core.match` operates on dynamic data — elegant for exploration, but
+  errors surface at runtime.  For a production engine applying rewrite rules
+  to a multi-layered AST, compile-time verification catches missed cases
+  before they reach users.
+
+- **ANTLR ecosystem (A+ vs. A)**.  ANTLR is the gold standard for parser
+  generators and targets Java/Kotlin natively.  Clojure's `instaparse` is
+  excellent but ANTLR's tooling — grammar visualization, debugging,
+  ambiguity detection — is unmatched.  The Section 13 grammar maps directly
+  to an ANTLR grammar.
+
+- **Talent pool and onboarding**.  Kotlin is a mainstream JVM language with
+  broad adoption (Android, server-side, multiplatform).  Clojure's
+  community is smaller and the Lisp syntax presents a learning curve for
+  contributors unfamiliar with the language.
+
+- **GraalVM native-image predictability**.  Both languages can use GraalVM,
+  but Kotlin's compatibility is more straightforward.  Clojure requires
+  `--initialize-at-build-time`, cannot use `eval` or unrestricted dynamic
+  class generation, and relies on community-maintained tooling for GraalVM
+  support.  Key libraries (instaparse, core.match) are not in the official
+  GraalVM compatibility matrix.
+
+Clojure's data-oriented programming model is a natural fit for AST
+manipulation, and REPL-driven development is excellent for exploring
+algebraic transformations.  But for a production build, Kotlin's compile-time
+guarantees and ecosystem breadth outweigh Clojure's ergonomic advantages.
+
+### 7.4 Why Kotlin over Java
+
+Kotlin and Java share the JVM ecosystem — same ANTLR, same JDBC, same
+jpackage, same z3-turnkey.  Kotlin is preferred for four language-level
+advantages:
+
+- **Sealed classes + `when` expressions**.  Kotlin's `sealed class`
+  hierarchies with exhaustive `when` are more concise and ergonomic than
+  Java's sealed classes with `switch` (available since Java 17 but still
+  more verbose).
+
+- **Data classes**.  AST nodes modeled as `data class` get `equals`,
+  `hashCode`, `copy`, and destructuring for free — essential for an engine
+  that constantly compares and transforms AST nodes.
+
+- **Null safety**.  Kotlin's type system distinguishes nullable and
+  non-nullable types, eliminating a class of runtime errors common in
+  Java code that handles optional metadata and nullable database results.
+
+- **Conciseness**.  Kotlin typically requires 30–40% fewer lines than
+  equivalent Java for the same logic.  For a project with six major
+  subsystems, this compounds into a meaningful difference in development
+  velocity and code navigability.
+
+### 7.5 Acknowledged Trade-Offs
+
+Kotlin is not the top-graded candidate in any single dimension:
+
+| Dimension                    | Kotlin grade | Leader        | Leader grade |
+|------------------------------|-------------|---------------|--------------|
+| **SMT integration**          | B+          | Python        | A            |
+| **Parsing / grammar**        | A+          | (tied leader) | A+           |
+| **AST / type modeling**      | B+          | Rust          | A            |
+| **PostgreSQL client**        | A           | (tied leader) | A            |
+| **Prototyping speed**        | B-          | Python        | A+           |
+| **Packaging / distribution** | B-          | Rust / Go     | A+           |
+
+The critical observation: Kotlin has no grade below B-.  Every other viable
+candidate has at least one dimension graded C or below:
+
+| Candidate  | Weakest grade | Dimension                 |
+|------------|--------------|---------------------------|
+| Python     | C+           | Packaging                 |
+| Rust       | C            | Prototyping speed         |
+| Clojure    | C+           | Packaging                 |
+| **Kotlin** | **B-**       | **Prototyping / Packaging** |
+
+For a production build that must succeed across all six dimensions, the
+candidate with the highest floor wins over candidates with higher ceilings
+but lower floors.
+
+### 7.6 Supporting Evidence from Resolved Open Questions
+
+The resolved open questions (Section 9) independently reinforce the Kotlin
+recommendation:
+
+- **JDBC enables compile-time round-trip** (Question 9.1).  The expression
+  comparison strategy requires creating policies in a transaction, reading
+  back the decompiled form, and rolling back.  JDBC's transaction control
+  makes this straightforward.
+
+- **`when` expressions handle casting rules** (Question 9.2).  The compiler
+  must emit explicit casts based on column type.  Kotlin's `when` over the
+  column type enum produces a concise, exhaustive dispatch table.
+
+- **Z3 performance is language-agnostic** (Question 9.3).  Z3 solving time
+  is dominated by the formula, not the binding language.  The JVM's JNI
+  overhead for Z3 calls is negligible for formula-level operations.
+
+- **ANTLR handles grammar disambiguation natively** (Question 9.4).  The
+  `AND` overloading between clause-level and selector-level contexts is
+  resolved automatically by ANTLR's parser state — no grammar refactoring
+  needed.
+
+---
+
+## 8. Proof-of-Concept Scope
 
 The PoC is a minimal vertical slice designed to validate the riskiest
 assumptions.  It is described in language-agnostic terms so it applies to
 whichever candidate is chosen.
 
-### 7.1 Parse Three Policies from Appendix A
+### 8.1 Parse Three Policies from Appendix A
 
 Implement a parser for a subset of the Section 13 grammar sufficient to
 parse the three policies defined in Appendix A.1:
@@ -863,7 +1034,7 @@ parsing.
 **Grammar subset required**: All of Section 13 except `fn()` value sources,
 `tagged()` selectors, and `NOT` selectors.
 
-### 7.2 Normalize the Section 9.6 Worked Example
+### 8.2 Normalize the Section 9.6 Worked Example
 
 Implement the normalization algorithm (Section 9.3) sufficient to reduce the
 4-clause example to 2 clauses:
@@ -883,7 +1054,7 @@ Expected output:
 **Validates**: atom normalization, contradiction detection (Rule 3),
 subsumption elimination (Rule 5), fixpoint loop termination.
 
-### 7.3 Prove Tenant Isolation via SMT
+### 8.3 Prove Tenant Isolation via SMT
 
 Implement the tenant isolation proof (Section 8.5) for the running example:
 
@@ -898,7 +1069,7 @@ quantifiers, Z3 API integration, timeout handling.
 **This is the riskiest component.**  If the SMT encoding of traversal atoms
 proves unreliable or too slow, the architecture must be reconsidered.
 
-### 7.4 Compile to SQL Matching Appendix A.5
+### 8.4 Compile to SQL Matching Appendix A.5
 
 Implement the compilation function (Section 10.2) and verify that the output
 matches the SQL in Appendix A.5:
@@ -911,7 +1082,7 @@ matches the SQL in Appendix A.5:
 **Validates**: atom compilation, traversal compilation, policy naming
 convention, output determinism.
 
-### 7.5 Detect Drift Against a Live PostgreSQL Instance
+### 8.5 Detect Drift Against a Live PostgreSQL Instance
 
 Connect to a PostgreSQL instance (local Docker container is sufficient),
 apply the compiled policies, manually introduce drift (e.g., disable RLS on
@@ -921,7 +1092,7 @@ identifies the discrepancy.
 **Validates**: PostgreSQL introspection, expression comparison, drift
 classification, database connectivity.
 
-### 7.6 PoC Exit Criteria
+### 8.6 PoC Exit Criteria
 
 The PoC is considered successful if:
 
@@ -934,14 +1105,14 @@ The PoC is considered successful if:
 
 ---
 
-## 8. Open Questions
+## 9. Open Questions
 
 These are specific issues identified during ADR development.  All six have
 been resolved through analysis of the formal specification, PostgreSQL
 documentation, and SMT solver research.  They are presented in their original
 risk order, with resolutions inline.
 
-### 8.1 SQL Expression Comparison for Drift Detection
+### 9.1 SQL Expression Comparison for Drift Detection
 
 **Status**: Resolved — compile-time round-trip (Option 4).
 
@@ -1011,7 +1182,7 @@ policies — those whose names match the compiled expected state (Section
 1.6.2).  Foreign policies are reported as `extra_policy` without expression
 comparison.
 
-### 8.2 Session Variable Type Casting
+### 9.2 Session Variable Type Casting
 
 **Status**: Resolved — compiler must emit explicit casts.
 
@@ -1065,7 +1236,7 @@ This approach is preferred over PL/pgSQL helper functions (Role A) because:
 **Note**: the formal specification's compilation function (Section 10.2)
 should be updated to reflect this casting requirement.
 
-### 8.3 Z3 Performance on Realistic Policy Sets
+### 9.3 Z3 Performance on Realistic Policy Sets
 
 **Status**: Resolved — risk is negligible for realistic policy sets.
 
@@ -1112,7 +1283,7 @@ The PoC should include a sanity-check benchmark confirming sub-second solving
 for the Appendix A examples, but Z3 performance is no longer considered a
 project risk.
 
-### 8.4 Grammar Disambiguation
+### 9.4 Grammar Disambiguation
 
 **Status**: Resolved — no grammar change needed.
 
@@ -1131,7 +1302,7 @@ automatically because the parser's state (which production it is currently
 matching) determines which `AND` interpretation applies.  No grammar
 refactoring or distinct keywords are required.
 
-### 8.5 Relationship Declaration Format
+### 9.5 Relationship Declaration Format
 
 **Status**: Resolved — inline in the DSL.
 
@@ -1155,7 +1326,7 @@ can extract all declared relationships from the AST if a global relationship
 registry is needed (e.g., for validation against database foreign keys as a
 convenience check).
 
-### 8.6 The `_` Wildcard in Traversal Atoms
+### 9.6 The `_` Wildcard in Traversal Atoms
 
 **Status**: Resolved — syntactic placeholder for the source table.
 
@@ -1199,7 +1370,7 @@ Every evaluation dimension in Section 2 ties to a specific requirement:
 | Parsing / grammar   | 1.1                  | 13                     |
 | AST / type modeling | 1.2                  | 2–3, 9                 |
 | PostgreSQL client   | 1.5, 1.6             | 11                     |
-| Prototyping speed   | PoC (Section 7)      | All                    |
+| Prototyping speed   | PoC (Section 8)      | All                    |
 | Packaging           | 1.8 (CLI deployment) | 12                     |
 
 ---
