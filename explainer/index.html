@@ -45,6 +45,9 @@ body {
   line-height: 1.75;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
 }
 
 /* ── Dot grid background ───────────────────────────────────── */
@@ -1128,6 +1131,17 @@ body::before {
     var pct = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
     progressBar.style.width = pct + '%';
   }, { passive: true });
+
+  /* ── Arrow-key scrolling ── */
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      window.scrollBy({
+        top: e.key === 'ArrowDown' ? 80 : -80,
+        behavior: 'smooth'
+      });
+    }
+  });
 
   /* ── Step indicator dots ── */
   var dots = document.querySelectorAll('.step-dot');
