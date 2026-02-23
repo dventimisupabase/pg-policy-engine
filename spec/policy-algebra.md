@@ -18,33 +18,33 @@ drift detection, and reconciliation.
 
 ## Notation Conventions
 
-| Symbol | Meaning |
-|--------|---------|
-| ∧ | Logical conjunction (AND) |
-| ∨ | Logical disjunction (OR) |
-| ¬ | Logical negation (NOT) |
-| ⊥ | Falsity / unsatisfiable / contradiction |
-| ⊤ | Truth / tautology |
-| ⊆ | Subset or subsumption |
-| ⊇ | Superset |
-| ⊑ | Lattice ordering (less restrictive than or equal) |
-| ⊔ | Lattice join (least upper bound) |
-| ⊓ | Lattice meet (greatest lower bound) |
-| △ | Symmetric difference |
-| ⟦·⟧ | Denotation (semantic interpretation) |
-| ⊢ | Entailment / proves |
-| ∀ | Universal quantifier |
-| ∃ | Existential quantifier |
-| → | Implication or maps-to |
-| ∅ | Empty set |
-| ∈ | Set membership |
-| ∉ | Not a member of |
-| ≡ | Logical equivalence |
-| ⊒ | Reverse lattice ordering (more permissive than or equal) |
-| 𝒫 | Power set |
-| ⋁ | Indexed disjunction (big OR) |
-| ⋀ | Indexed conjunction (big AND) |
-| \|S\| | Cardinality of set S |
+| Symbol | Meaning                                                  |
+|--------|----------------------------------------------------------|
+| ∧      | Logical conjunction (AND)                                |
+| ∨      | Logical disjunction (OR)                                 |
+| ¬      | Logical negation (NOT)                                   |
+| ⊥      | Falsity / unsatisfiable / contradiction                  |
+| ⊤      | Truth / tautology                                        |
+| ⊆      | Subset or subsumption                                    |
+| ⊇      | Superset                                                 |
+| ⊑      | Lattice ordering (less restrictive than or equal)        |
+| ⊔      | Lattice join (least upper bound)                         |
+| ⊓      | Lattice meet (greatest lower bound)                      |
+| △      | Symmetric difference                                     |
+| ⟦·⟧    | Denotation (semantic interpretation)                     |
+| ⊢      | Entailment / proves                                      |
+| ∀      | Universal quantifier                                     |
+| ∃      | Existential quantifier                                   |
+| →      | Implication or maps-to                                   |
+| ∅      | Empty set                                                |
+| ∈      | Set membership                                           |
+| ∉      | Not a member of                                          |
+| ≡      | Logical equivalence                                      |
+| ⊒      | Reverse lattice ordering (more permissive than or equal) |
+| 𝒫      | Power set                                                |
+| ⋁      | Indexed disjunction (big OR)                             |
+| ⋀      | Indexed conjunction (big AND)                            |
+| \|S\|  | Cardinality of set S                                     |
 
 ## Running Example Schema
 
@@ -271,13 +271,13 @@ BNF fragment:
 
 **Examples**:
 
-| Atom | Informal meaning |
-|------|-----------------|
+| Atom                                              | Informal meaning                    |
+|---------------------------------------------------|-------------------------------------|
 | `(col('tenant_id'), =, session('app.tenant_id'))` | Row's tenant matches session tenant |
-| `(col('role'), =, lit('admin'))` | User role is admin |
-| `(col('is_deleted'), =, lit(false))` | Row is not soft-deleted |
-| `(col('status'), IN, lit(['active', 'pending']))` | Status is active or pending |
-| `(col('deleted_at'), IS NULL, _)` | No deletion timestamp |
+| `(col('role'), =, lit('admin'))`                  | User role is admin                  |
+| `(col('is_deleted'), =, lit(false))`              | Row is not soft-deleted             |
+| `(col('status'), IN, lit(['active', 'pending']))` | Status is active or pending         |
+| `(col('deleted_at'), IS NULL, _)`                 | No deletion timestamp               |
 
 ### 2.3 Atom Normal Form
 
@@ -552,11 +552,11 @@ access already granted by permissive policies.
 
 Bonatti et al. (2002) define an access-control algebra with three operators:
 
-| Bonatti operator | This algebra | Effect |
-|------------------|-------------|--------|
-| `+` (grant/union) | Permissive policy disjunction | Expands accessible rows |
-| `&` (restriction/intersection) | Restrictive policy conjunction | Narrows accessible rows |
-| `−` (exception/difference) | Not directly supported | Would allow row-level exceptions |
+| Bonatti operator               | This algebra                   | Effect                           |
+|--------------------------------|--------------------------------|----------------------------------|
+| `+` (grant/union)              | Permissive policy disjunction  | Expands accessible rows          |
+| `&` (restriction/intersection) | Restrictive policy conjunction | Narrows accessible rows          |
+| `−` (exception/difference)     | Not directly supported         | Would allow row-level exceptions |
 
 The effective predicate formula maps directly:
 
@@ -1634,15 +1634,15 @@ Drift = O △ E = (O ∖ E) ∪ (E ∖ O)
 
 Drift is classified into the following types:
 
-| Drift type | Description | Severity |
-|------------|-------------|----------|
-| Missing policy | Expected policy not found in database | Critical |
-| Extra policy | Unmanaged policy found on governed table | Warning |
+| Drift type      | Description                                      | Severity |
+|-----------------|--------------------------------------------------|----------|
+| Missing policy  | Expected policy not found in database            | Critical |
+| Extra policy    | Unmanaged policy found on governed table         | Warning  |
 | Modified policy | Policy exists but USING/CHECK expression differs | Critical |
-| Missing GRANT | Expected GRANT not present | Critical |
-| Extra GRANT | Unmanaged GRANT on governed table | Warning |
-| RLS disabled | `relrowsecurity = false` on governed table | Critical |
-| RLS not forced | `relforcerowsecurity = false` on governed table | High |
+| Missing GRANT   | Expected GRANT not present                       | Critical |
+| Extra GRANT     | Unmanaged GRANT on governed table                | Warning  |
+| RLS disabled    | `relrowsecurity = false` on governed table       | Critical |
+| RLS not forced  | `relforcerowsecurity = false` on governed table  | High     |
 
 ### 11.4 Drift Detection Algorithm
 
@@ -1971,27 +1971,27 @@ standalone grammar for the policy algebra DSL.
 
 ## 14. Summary of Properties & Lemmas
 
-| # | Name | Statement | Section |
-|---|------|-----------|---------|
-| T1.1 | Undecidability of arbitrary RLS | Determining row accessibility under arbitrary SQL RLS predicates is undecidable | 1.1 |
-| P2.1 | Decidability of atom satisfiability | Satisfiability of any finite conjunction of atoms is decidable (reduces to QF-LIA/EUF) | 2.5 |
-| P3.1 | Clause satisfiability | A normalized clause is satisfiable iff c ≠ ⊥; SMT provides a complete decision procedure | 3.3 |
-| P3.2 | Clause subsumption | c₁ ⊆ c₂ (atom sets) implies ⟦c₂⟧ ⊆ ⟦c₁⟧ | 3.3 |
-| P3.3 | Idempotence | c ∧ c = c for any clause c | 3.3 |
-| P5.1 | Monotonicity of permissive extension | Adding a permissive policy can only increase accessible rows | 5.5 |
-| P5.2 | Anti-monotonicity of restrictive extension | Adding a restrictive policy can only decrease accessible rows | 5.5 |
-| L5.1 | Subsumed permissive redundancy | A permissive policy subsumed by another is redundant | 5.6 |
-| P6.1 | Selector monotonicity | Adding tables preserves existing selector matches | 6.5 |
-| P7.1 | Bounded compilation | Traversal of depth d compiles to at most d nested EXISTS | 7.4 |
-| P7.2 | No recursive traversal | Hierarchies require closure tables, not recursive policy expressions | 7.4 |
-| T8.1 | Tenant isolation sufficient condition | If every permissive clause contains the tenant atom, isolation holds | 8.5 |
-| P9.1 | Termination of normalization | Normalization algorithm terminates (strict reduction under lex ordering) | 9.4 |
-| P9.2 | Correctness of normalization | Each rewrite rule preserves denotation | 9.5 |
-| T10.1 | Compilation correctness | Accessible rows under compiled SQL = rows satisfying effective(T, CMD) | 10.3 |
-| P10.1 | Monotonicity of compilation | Subsumption in DSL preserved in compiled SQL | 10.4 |
-| P10.2 | Determinism of compilation | Same normal form → identical SQL output | 10.5 |
-| P12.1 | Convergence | One governance cycle brings drift to zero (absent external changes) | 12.3 |
-| P12.2 | Idempotence of application | Applying same artifacts twice = same state | 12.4 |
+| #     | Name                                       | Statement                                                                                | Section |
+|-------|--------------------------------------------|------------------------------------------------------------------------------------------|---------|
+| T1.1  | Undecidability of arbitrary RLS            | Determining row accessibility under arbitrary SQL RLS predicates is undecidable          | 1.1     |
+| P2.1  | Decidability of atom satisfiability        | Satisfiability of any finite conjunction of atoms is decidable (reduces to QF-LIA/EUF)   | 2.5     |
+| P3.1  | Clause satisfiability                      | A normalized clause is satisfiable iff c ≠ ⊥; SMT provides a complete decision procedure | 3.3     |
+| P3.2  | Clause subsumption                         | c₁ ⊆ c₂ (atom sets) implies ⟦c₂⟧ ⊆ ⟦c₁⟧                                                  | 3.3     |
+| P3.3  | Idempotence                                | c ∧ c = c for any clause c                                                               | 3.3     |
+| P5.1  | Monotonicity of permissive extension       | Adding a permissive policy can only increase accessible rows                             | 5.5     |
+| P5.2  | Anti-monotonicity of restrictive extension | Adding a restrictive policy can only decrease accessible rows                            | 5.5     |
+| L5.1  | Subsumed permissive redundancy             | A permissive policy subsumed by another is redundant                                     | 5.6     |
+| P6.1  | Selector monotonicity                      | Adding tables preserves existing selector matches                                        | 6.5     |
+| P7.1  | Bounded compilation                        | Traversal of depth d compiles to at most d nested EXISTS                                 | 7.4     |
+| P7.2  | No recursive traversal                     | Hierarchies require closure tables, not recursive policy expressions                     | 7.4     |
+| T8.1  | Tenant isolation sufficient condition      | If every permissive clause contains the tenant atom, isolation holds                     | 8.5     |
+| P9.1  | Termination of normalization               | Normalization algorithm terminates (strict reduction under lex ordering)                 | 9.4     |
+| P9.2  | Correctness of normalization               | Each rewrite rule preserves denotation                                                   | 9.5     |
+| T10.1 | Compilation correctness                    | Accessible rows under compiled SQL = rows satisfying effective(T, CMD)                   | 10.3    |
+| P10.1 | Monotonicity of compilation                | Subsumption in DSL preserved in compiled SQL                                             | 10.4    |
+| P10.2 | Determinism of compilation                 | Same normal form → identical SQL output                                                  | 10.5    |
+| P12.1 | Convergence                                | One governance cycle brings drift to zero (absent external changes)                      | 12.3    |
+| P12.2 | Idempotence of application                 | Applying same artifacts twice = same state                                               | 12.4    |
 
 ---
 
@@ -2032,22 +2032,22 @@ POLICY soft_delete
 
 Evaluate selectors against the running example metadata:
 
-| Selector | Matching tables |
-|----------|----------------|
-| `has_column('tenant_id')` | users, projects, comments |
-| `named('tasks') OR named('files')` | tasks, files |
-| `has_column('is_deleted')` | projects |
+| Selector                           | Matching tables           |
+|------------------------------------|---------------------------|
+| `has_column('tenant_id')`          | users, projects, comments |
+| `named('tasks') OR named('files')` | tasks, files              |
+| `has_column('is_deleted')`         | projects                  |
 
 Policy-to-table mapping:
 
-| Table | Policies applied |
-|-------|-----------------|
-| users | tenant_isolation |
+| Table    | Policies applied              |
+|----------|-------------------------------|
+| users    | tenant_isolation              |
 | projects | tenant_isolation, soft_delete |
-| tasks | tenant_isolation_via_project |
-| comments | tenant_isolation |
-| files | tenant_isolation_via_project |
-| config | *(none — default deny)* |
+| tasks    | tenant_isolation_via_project  |
+| comments | tenant_isolation              |
+| files    | tenant_isolation_via_project  |
+| config   | *(none — default deny)*       |
 
 ### A.3 Normalize
 
@@ -2234,31 +2234,31 @@ reviewed and either adopted into the policy set or dropped).
 
 ## Appendix B: Glossary
 
-| Term | Definition |
-|------|-----------|
-| **Atom** | An irreducible boolean comparison: `(left_source, operator, right_source)`. The smallest unit of the policy algebra. |
-| **Clause** | A conjunction (AND) of atoms. Represents a single access condition that must be fully satisfied. |
-| **Compilation** | The deterministic translation of a policy set to PostgreSQL SQL artifacts. |
-| **Default deny** | The principle that if no permissive policy grants access, no rows are accessible. |
-| **Denotation** | The semantic interpretation `⟦·⟧` of a policy expression: the set of rows it matches. |
-| **Drift** | Any discrepancy between the observed database state and the expected state derived from the policy algebra. |
-| **Effective access predicate** | The combined predicate `(∨ permissive) ∧ (∧ restrictive)` that determines row accessibility. |
-| **FCA** | Formal Concept Analysis. A mathematical framework for deriving concept hierarchies from object-attribute relations. |
-| **Galois connection** | A pair of monotone functions between ordered sets satisfying an adjunction property. Used to relate DSL and SQL semantics. |
-| **Governance loop** | The six-phase cycle: Define → Analyze → Compile → Apply → Monitor → Reconcile. |
-| **Normalization** | The process of applying rewrite rules to reduce a policy to its canonical form. |
-| **Permissive policy** | A policy whose clauses are OR'd together with other permissive policies. Grants access. |
-| **Policy** | A named, typed collection of clauses with a selector and command set. |
-| **Policy set** | The complete collection of policies governing a database. |
-| **Reconciliation** | The process of resolving drift between observed and expected database state. |
-| **Relationship** | A declared foreign-key link between tables, used for traversal atoms. |
-| **Restrictive policy** | A policy whose clauses are AND'd with the permissive disjunction. Narrows access. |
-| **RLS** | Row-Level Security. PostgreSQL's mechanism for attaching row-filtering predicates to tables. |
-| **Selector** | A predicate over table metadata that determines which tables a policy applies to. |
-| **SMT** | Satisfiability Modulo Theories. A decision procedure for logical formulas over combined theories. |
-| **Subsumption** | Relation where one policy/clause is at least as permissive as another. |
-| **Traversal atom** | An atom that uses `exists(relationship, clause)` to follow a foreign-key relationship. |
-| **Value source** | A typed scalar producer: column reference, session variable, literal, or function call. |
+| Term                           | Definition                                                                                                                 |
+|--------------------------------|----------------------------------------------------------------------------------------------------------------------------|
+| **Atom**                       | An irreducible boolean comparison: `(left_source, operator, right_source)`. The smallest unit of the policy algebra.       |
+| **Clause**                     | A conjunction (AND) of atoms. Represents a single access condition that must be fully satisfied.                           |
+| **Compilation**                | The deterministic translation of a policy set to PostgreSQL SQL artifacts.                                                 |
+| **Default deny**               | The principle that if no permissive policy grants access, no rows are accessible.                                          |
+| **Denotation**                 | The semantic interpretation `⟦·⟧` of a policy expression: the set of rows it matches.                                      |
+| **Drift**                      | Any discrepancy between the observed database state and the expected state derived from the policy algebra.                |
+| **Effective access predicate** | The combined predicate `(∨ permissive) ∧ (∧ restrictive)` that determines row accessibility.                               |
+| **FCA**                        | Formal Concept Analysis. A mathematical framework for deriving concept hierarchies from object-attribute relations.        |
+| **Galois connection**          | A pair of monotone functions between ordered sets satisfying an adjunction property. Used to relate DSL and SQL semantics. |
+| **Governance loop**            | The six-phase cycle: Define → Analyze → Compile → Apply → Monitor → Reconcile.                                             |
+| **Normalization**              | The process of applying rewrite rules to reduce a policy to its canonical form.                                            |
+| **Permissive policy**          | A policy whose clauses are OR'd together with other permissive policies. Grants access.                                    |
+| **Policy**                     | A named, typed collection of clauses with a selector and command set.                                                      |
+| **Policy set**                 | The complete collection of policies governing a database.                                                                  |
+| **Reconciliation**             | The process of resolving drift between observed and expected database state.                                               |
+| **Relationship**               | A declared foreign-key link between tables, used for traversal atoms.                                                      |
+| **Restrictive policy**         | A policy whose clauses are AND'd with the permissive disjunction. Narrows access.                                          |
+| **RLS**                        | Row-Level Security. PostgreSQL's mechanism for attaching row-filtering predicates to tables.                               |
+| **Selector**                   | A predicate over table metadata that determines which tables a policy applies to.                                          |
+| **SMT**                        | Satisfiability Modulo Theories. A decision procedure for logical formulas over combined theories.                          |
+| **Subsumption**                | Relation where one policy/clause is at least as permissive as another.                                                     |
+| **Traversal atom**             | An atom that uses `exists(relationship, clause)` to follow a foreign-key relationship.                                     |
+| **Value source**               | A typed scalar producer: column reference, session variable, literal, or function call.                                    |
 
 ---
 

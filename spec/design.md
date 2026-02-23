@@ -236,103 +236,103 @@ Each module is a Kotlin package under `com.pgpe`. Modules communicate exclusivel
 
 ### 4.1 Parser (`com.pgpe.parser`)
 
-| | |
-|---|---|
-| **Entry point** | `fun parse(source: String, fileName: String): PolicySet` |
-| **Input** | DSL source text, file name for error reporting |
-| **Output** | `PolicySet` (AST) |
-| **Dependencies** | `com.pgpe.ast` (types only), ANTLR4 runtime |
-| **External deps** | ANTLR4-generated lexer/parser (Java) |
-| **Testability** | Pure function; no I/O, no Z3, no PostgreSQL |
+|                   |                                                          |
+|-------------------|----------------------------------------------------------|
+| **Entry point**   | `fun parse(source: String, fileName: String): PolicySet` |
+| **Input**         | DSL source text, file name for error reporting           |
+| **Output**        | `PolicySet` (AST)                                        |
+| **Dependencies**  | `com.pgpe.ast` (types only), ANTLR4 runtime              |
+| **External deps** | ANTLR4-generated lexer/parser (Java)                     |
+| **Testability**   | Pure function; no I/O, no Z3, no PostgreSQL              |
 
 Internally: ANTLR4 grammar generates Java lexer/parser. A Kotlin `AstBuilder` visitor converts the ANTLR parse tree to the sealed class AST. Parse errors are collected with file/line/column context.
 
 ### 4.2 Normalizer (`com.pgpe.ast`)
 
-| | |
-|---|---|
-| **Entry point** | `fun normalize(policySet: PolicySet): PolicySet` |
-| **Input** | `PolicySet` (potentially non-normalized) |
-| **Output** | `PolicySet` (normalized to fixpoint) |
-| **Dependencies** | `com.pgpe.ast` (types only) |
-| **External deps** | None |
-| **Testability** | Pure function; no I/O, no Z3, no PostgreSQL |
+|                   |                                                  |
+|-------------------|--------------------------------------------------|
+| **Entry point**   | `fun normalize(policySet: PolicySet): PolicySet` |
+| **Input**         | `PolicySet` (potentially non-normalized)         |
+| **Output**        | `PolicySet` (normalized to fixpoint)             |
+| **Dependencies**  | `com.pgpe.ast` (types only)                      |
+| **External deps** | None                                             |
+| **Testability**   | Pure function; no I/O, no Z3, no PostgreSQL      |
 
 Applies the 6 rewrite rules (spec Section 9.1) to each policy's clauses until a fixpoint is reached: idempotence, absorption, contradiction elimination, tautology detection, subsumption elimination, atom merging. Syntactic subsumption only in PoC; semantic subsumption via SMT deferred to Phase 1.
 
 ### 4.3 Analyzer (`com.pgpe.analysis`)
 
-| | |
-|---|---|
-| **Entry point** | `fun analyze(policySet: PolicySet, metadata: SchemaMetadata): AnalysisReport` |
-| **Input** | Normalized `PolicySet`, table metadata (names, columns, types) |
-| **Output** | `AnalysisReport` (isolation proofs, contradictions, subsumptions) |
-| **Dependencies** | `com.pgpe.ast` (types only) |
-| **External deps** | Z3 (via z3-turnkey JNI bindings) |
-| **Testability** | Requires Z3 native library; no PostgreSQL |
+|                   |                                                                               |
+|-------------------|-------------------------------------------------------------------------------|
+| **Entry point**   | `fun analyze(policySet: PolicySet, metadata: SchemaMetadata): AnalysisReport` |
+| **Input**         | Normalized `PolicySet`, table metadata (names, columns, types)                |
+| **Output**        | `AnalysisReport` (isolation proofs, contradictions, subsumptions)             |
+| **Dependencies**  | `com.pgpe.ast` (types only)                                                   |
+| **External deps** | Z3 (via z3-turnkey JNI bindings)                                              |
+| **Testability**   | Requires Z3 native library; no PostgreSQL                                     |
 
 Encodes the effective access predicate (spec Section 5) as SMT formulas in QF-LIA ∪ QF-EUF. For tenant isolation (spec Section 8.5): creates two session variable sets with differing `app.tenant_id`, asserts both sessions can access the same row, checks for UNSAT. Timeout produces UNKNOWN, not an error.
 
 ### 4.4 Compiler (`com.pgpe.compiler`)
 
-| | |
-|---|---|
-| **Entry point** | `fun compile(policySet: PolicySet, metadata: SchemaMetadata): CompiledState` |
-| **Input** | Normalized `PolicySet`, table metadata |
-| **Output** | `CompiledState` (DDL statements per table) |
-| **Dependencies** | `com.pgpe.ast` (types only) |
-| **External deps** | None |
-| **Testability** | Pure function; no I/O, no Z3, no PostgreSQL |
+|                   |                                                                              |
+|-------------------|------------------------------------------------------------------------------|
+| **Entry point**   | `fun compile(policySet: PolicySet, metadata: SchemaMetadata): CompiledState` |
+| **Input**         | Normalized `PolicySet`, table metadata                                       |
+| **Output**        | `CompiledState` (DDL statements per table)                                   |
+| **Dependencies**  | `com.pgpe.ast` (types only)                                                  |
+| **External deps** | None                                                                         |
+| **Testability**   | Pure function; no I/O, no Z3, no PostgreSQL                                  |
 
 Evaluates selectors against metadata to determine which tables each policy governs. Compiles atoms to SQL expressions per spec Section 10.2. Policy naming convention: `<policy_name>_<table_name>`. Traversal atoms compile to `EXISTS (SELECT 1 FROM ...)` subqueries. Session variables compile to `current_setting('key')` with type casts per ADR Section 9.2.
 
 ### 4.5 Introspector (`com.pgpe.introspect`)
 
-| | |
-|---|---|
-| **Entry point** | `fun introspect(connection: Connection, tables: List<String>): ObservedState` |
-| **Input** | JDBC connection, list of governed table names |
-| **Output** | `ObservedState` (policies, RLS status, grants per table) |
-| **Dependencies** | `com.pgpe.ast` (types only) |
-| **External deps** | PostgreSQL JDBC driver, HikariCP |
-| **Testability** | Requires PostgreSQL (Testcontainers in tests) |
+|                   |                                                                               |
+|-------------------|-------------------------------------------------------------------------------|
+| **Entry point**   | `fun introspect(connection: Connection, tables: List<String>): ObservedState` |
+| **Input**         | JDBC connection, list of governed table names                                 |
+| **Output**        | `ObservedState` (policies, RLS status, grants per table)                      |
+| **Dependencies**  | `com.pgpe.ast` (types only)                                                   |
+| **External deps** | PostgreSQL JDBC driver, HikariCP                                              |
+| **Testability**   | Requires PostgreSQL (Testcontainers in tests)                                 |
 
 Queries `pg_policies`, `pg_class` catalog views to extract current RLS state: enabled/forced status, policy names, USING/CHECK expressions, command applicability.
 
 ### 4.6 Drift Detector (`com.pgpe.drift`)
 
-| | |
-|---|---|
-| **Entry point** | `fun detectDrift(expected: CompiledState, observed: ObservedState): DriftReport` |
-| **Input** | `CompiledState` (from compiler), `ObservedState` (from introspector) |
-| **Output** | `DriftReport` (list of `DriftItem` with severity) |
-| **Dependencies** | `com.pgpe.ast` (types only) |
-| **External deps** | None |
-| **Testability** | Pure function; no I/O, no Z3, no PostgreSQL |
+|                   |                                                                                  |
+|-------------------|----------------------------------------------------------------------------------|
+| **Entry point**   | `fun detectDrift(expected: CompiledState, observed: ObservedState): DriftReport` |
+| **Input**         | `CompiledState` (from compiler), `ObservedState` (from introspector)             |
+| **Output**        | `DriftReport` (list of `DriftItem` with severity)                                |
+| **Dependencies**  | `com.pgpe.ast` (types only)                                                      |
+| **External deps** | None                                                                             |
+| **Testability**   | Pure function; no I/O, no Z3, no PostgreSQL                                      |
 
 Compares expected vs. observed state and classifies discrepancies into 7 drift types (spec Section 11.3). Expression comparison normalizes whitespace before diffing.
 
 ### 4.7 Reconciler (`com.pgpe.drift`)
 
-| | |
-|---|---|
-| **Entry point** | `fun reconcile(driftItems: List<DriftItem>, strategy: ReconciliationStrategy): List<String>` |
-| **Input** | Drift items, reconciliation strategy (auto / alert / dry-run) |
-| **Output** | List of SQL remediation statements |
-| **Dependencies** | `com.pgpe.ast` (types only) |
-| **External deps** | None |
-| **Testability** | Pure function; no I/O |
+|                   |                                                                                              |
+|-------------------|----------------------------------------------------------------------------------------------|
+| **Entry point**   | `fun reconcile(driftItems: List<DriftItem>, strategy: ReconciliationStrategy): List<String>` |
+| **Input**         | Drift items, reconciliation strategy (auto / alert / dry-run)                                |
+| **Output**        | List of SQL remediation statements                                                           |
+| **Dependencies**  | `com.pgpe.ast` (types only)                                                                  |
+| **External deps** | None                                                                                         |
+| **Testability**   | Pure function; no I/O                                                                        |
 
 Generates SQL statements to remediate each drift item. PoC produces SQL strings only (dry-run); Phase 1 adds execution capability.
 
 ### 4.8 CLI (`com.pgpe.cli`)
 
-| | |
-|---|---|
-| **Entry point** | `fun main(args: Array<String>)` |
-| **Commands** | `analyze`, `compile`, `apply`, `monitor` |
-| **Dependencies** | All modules |
-| **External deps** | Clikt (command-line parsing) |
+|                   |                                          |
+|-------------------|------------------------------------------|
+| **Entry point**   | `fun main(args: Array<String>)`          |
+| **Commands**      | `analyze`, `compile`, `apply`, `monitor` |
+| **Dependencies**  | All modules                              |
+| **External deps** | Clikt (command-line parsing)             |
 
 Clikt command tree wrapping all modules. Handles `--format` (text/json), `--dry-run`, `--verbose`, `--target`, `--policy-dir`, `--config`. Formats errors for humans (parse errors with file/line/column). Maps results to exit codes: 0/1/2.
 
@@ -373,14 +373,14 @@ Key properties:
 
 The governance loop (spec Section 12) maps to CLI commands and module chains:
 
-| Phase | CLI Command | Module Chain | Input | Output |
-|---|---|---|---|---|
-| Define | *(editor)* | — | — | `.policy` files |
-| Analyze | `pgpe analyze` | Parser → Normalizer → Analyzer | `.policy` files, schema metadata | `AnalysisReport` |
-| Compile | `pgpe compile` | Parser → Normalizer → Compiler | `.policy` files, schema metadata | `CompiledState` (SQL) |
-| Apply | `pgpe apply` | Parser → Normalizer → Compiler → Applier | `.policy` files, DB connection | DDL executed on DB |
-| Monitor | `pgpe monitor` | Parser → Normalizer → Compiler + Introspector → Drift Detector | `.policy` files, DB connection | `DriftReport` |
-| Reconcile | `pgpe monitor --reconcile` | ...Monitor chain → Reconciler | `DriftReport`, strategy | Remediation SQL |
+| Phase     | CLI Command                | Module Chain                                                   | Input                            | Output                |
+|-----------|----------------------------|----------------------------------------------------------------|----------------------------------|-----------------------|
+| Define    | *(editor)*                 | —                                                              | —                                | `.policy` files       |
+| Analyze   | `pgpe analyze`             | Parser → Normalizer → Analyzer                                 | `.policy` files, schema metadata | `AnalysisReport`      |
+| Compile   | `pgpe compile`             | Parser → Normalizer → Compiler                                 | `.policy` files, schema metadata | `CompiledState` (SQL) |
+| Apply     | `pgpe apply`               | Parser → Normalizer → Compiler → Applier                       | `.policy` files, DB connection   | DDL executed on DB    |
+| Monitor   | `pgpe monitor`             | Parser → Normalizer → Compiler + Introspector → Drift Detector | `.policy` files, DB connection   | `DriftReport`         |
+| Reconcile | `pgpe monitor --reconcile` | ...Monitor chain → Reconciler                                  | `DriftReport`, strategy          | Remediation SQL       |
 
 Schema metadata is obtained either from a live database connection or from a metadata file (Phase 1).
 
@@ -451,14 +451,14 @@ Configuration file is optional during PoC (all values provided via CLI flags). P
 
 ### 8.2 CLI Flags
 
-| Flag | Default | Description |
-|---|---|---|
-| `--target` | from config | PostgreSQL connection string |
-| `--policy-dir` | `./policies` | Directory containing `.policy` files |
-| `--config` | `./pgpe.yaml` | Configuration file path |
-| `--format` | `text` | Output format: `text` or `json` |
-| `--dry-run` | `false` | Preview without executing DDL |
-| `--verbose` | `false` | Detailed output including timing |
+| Flag           | Default       | Description                          |
+|----------------|---------------|--------------------------------------|
+| `--target`     | from config   | PostgreSQL connection string         |
+| `--policy-dir` | `./policies`  | Directory containing `.policy` files |
+| `--config`     | `./pgpe.yaml` | Configuration file path              |
+| `--format`     | `text`        | Output format: `text` or `json`      |
+| `--dry-run`    | `false`       | Preview without executing DDL        |
+| `--verbose`    | `false`       | Detailed output including timing     |
 
 ### 8.3 Relationship Declaration
 
@@ -470,16 +470,16 @@ Relationships are declared inline in the DSL within `exists()` traversal atoms (
 
 The sealed class hierarchy is the primary extension mechanism. Adding a new variant to any sealed class causes compile-time errors in every `when` expression that handles that type, ensuring all modules are updated.
 
-| Future Feature | Where It Plugs In | What Changes |
-|---|---|---|
-| `fn()` value source | `ValueSource.Fn` | Parser: grammar rule. Compiler: SQL generation. Analyzer: SMT encoding (uninterpreted function) |
-| `tagged()` selector | `Selector.Tagged` | Parser: grammar rule. Compiler: metadata lookup. Requires tag storage mechanism |
-| `NOT` selector | `Selector.Not` | Parser: grammar rule. Compiler: selector evaluation negation |
-| New binary operator | `BinaryOp` enum | Parser: grammar rule. Compiler: SQL operator mapping. Analyzer: SMT encoding |
-| New drift type | `DriftItem` subclass | Introspector: catalog query. Drift Detector: comparison logic. Reconciler: remediation SQL |
-| New CLI command | `cli` package | Clikt subcommand wiring. No core module changes |
-| WITH CHECK support | `CompiledPolicy` | Compiler: separate check expression. Parser: grammar extension |
-| Configuration file | `cli` package | YAML parsing. No core module changes |
+| Future Feature      | Where It Plugs In    | What Changes                                                                                    |
+|---------------------|----------------------|-------------------------------------------------------------------------------------------------|
+| `fn()` value source | `ValueSource.Fn`     | Parser: grammar rule. Compiler: SQL generation. Analyzer: SMT encoding (uninterpreted function) |
+| `tagged()` selector | `Selector.Tagged`    | Parser: grammar rule. Compiler: metadata lookup. Requires tag storage mechanism                 |
+| `NOT` selector      | `Selector.Not`       | Parser: grammar rule. Compiler: selector evaluation negation                                    |
+| New binary operator | `BinaryOp` enum      | Parser: grammar rule. Compiler: SQL operator mapping. Analyzer: SMT encoding                    |
+| New drift type      | `DriftItem` subclass | Introspector: catalog query. Drift Detector: comparison logic. Reconciler: remediation SQL      |
+| New CLI command     | `cli` package        | Clikt subcommand wiring. No core module changes                                                 |
+| WITH CHECK support  | `CompiledPolicy`     | Compiler: separate check expression. Parser: grammar extension                                  |
+| Configuration file  | `cli` package        | YAML parsing. No core module changes                                                            |
 
 Phase 1 features (`fn()`, `tagged()`, `NOT`, GRANTs) are designed to slot into the existing architecture without structural changes. Each adds a variant to an existing sealed class and extends the relevant `when` expressions.
 
@@ -487,17 +487,17 @@ Phase 1 features (`fn()`, `tagged()`, `NOT`, GRANTs) are designed to slot into t
 
 ## 10. Cross-References
 
-| Design Doc Section | Spec Sections | ADR Sections |
-|---|---|---|
-| 2. System Overview | 12 (Governance Loop) | 4.2 (Package Layout) |
-| 3. Core Data Structures | 2-6 (Algebra Definitions) | 9.6 (Wildcard Handling) |
-| 4.1 Parser | 13 (BNF Grammar) | 8.1 (PoC: Parse) |
-| 4.2 Normalizer | 9.1-9.6 (Normalization) | 8.2 (PoC: Normalize) |
-| 4.3 Analyzer | 8.1-8.5 (Analysis) | 8.3 (PoC: Isolation Proof) |
-| 4.4 Compiler | 10.1-10.5 (Compilation) | 8.4 (PoC: Compile), 9.2 (Casting) |
-| 4.5 Introspector | 11.1-11.2 (Introspection) | 8.5 (PoC: Drift) |
-| 4.6 Drift Detector | 11.3 (Drift Types) | 8.5 (PoC: Drift) |
-| 4.7 Reconciler | 11.4 (Reconciliation) | — |
-| 7. Error Handling | — | 10.2.4 (Code Quality) |
-| 8. Configuration | — | 9.5 (Inline Relationships) |
-| 9. Extensibility | — | 10.2.5 G8 (Phase 1 Extensions) |
+| Design Doc Section      | Spec Sections             | ADR Sections                      |
+|-------------------------|---------------------------|-----------------------------------|
+| 2. System Overview      | 12 (Governance Loop)      | 4.2 (Package Layout)              |
+| 3. Core Data Structures | 2-6 (Algebra Definitions) | 9.6 (Wildcard Handling)           |
+| 4.1 Parser              | 13 (BNF Grammar)          | 8.1 (PoC: Parse)                  |
+| 4.2 Normalizer          | 9.1-9.6 (Normalization)   | 8.2 (PoC: Normalize)              |
+| 4.3 Analyzer            | 8.1-8.5 (Analysis)        | 8.3 (PoC: Isolation Proof)        |
+| 4.4 Compiler            | 10.1-10.5 (Compilation)   | 8.4 (PoC: Compile), 9.2 (Casting) |
+| 4.5 Introspector        | 11.1-11.2 (Introspection) | 8.5 (PoC: Drift)                  |
+| 4.6 Drift Detector      | 11.3 (Drift Types)        | 8.5 (PoC: Drift)                  |
+| 4.7 Reconciler          | 11.4 (Reconciliation)     | —                                 |
+| 7. Error Handling       | —                         | 10.2.4 (Code Quality)             |
+| 8. Configuration        | —                         | 9.5 (Inline Relationships)        |
+| 9. Extensibility        | —                         | 10.2.5 G8 (Phase 1 Extensions)    |

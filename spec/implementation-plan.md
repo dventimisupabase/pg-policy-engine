@@ -10,13 +10,13 @@
 
 ### 1.1 Toolchain
 
-| Tool | Version | Purpose |
-|---|---|---|
-| Kotlin | 2.x | Primary language |
-| JVM | 21 | Runtime target |
-| Gradle | 8.x+ | Build system |
-| ANTLR4 | 4.13+ | Parser generator |
-| Z3 | via z3-turnkey | SMT solver (JNI) |
+| Tool   | Version        | Purpose          |
+|--------|----------------|------------------|
+| Kotlin | 2.x            | Primary language |
+| JVM    | 21             | Runtime target   |
+| Gradle | 8.x+           | Build system     |
+| ANTLR4 | 4.13+          | Parser generator |
+| Z3     | via z3-turnkey | SMT solver (JNI) |
 
 ### 1.2 Gradle Plugins
 
@@ -30,24 +30,24 @@ plugins {
 
 ### 1.3 Runtime Dependencies
 
-| Dependency | Coordinates | Purpose |
-|---|---|---|
-| ANTLR4 Runtime | `org.antlr:antlr4-runtime:4.13.x` | Parser runtime |
-| z3-turnkey | `tools.aqua:z3-turnkey:4.13.x` | Z3 SMT solver with bundled native libs |
-| PostgreSQL JDBC | `org.postgresql:postgresql:42.x.x` | Database connectivity |
-| HikariCP | `com.zaxxer:HikariCP:5.x.x` | Connection pooling |
-| Clikt | `com.github.ajalt.clikt:clikt:4.x.x` | CLI framework |
+| Dependency      | Coordinates                          | Purpose                                |
+|-----------------|--------------------------------------|----------------------------------------|
+| ANTLR4 Runtime  | `org.antlr:antlr4-runtime:4.13.x`    | Parser runtime                         |
+| z3-turnkey      | `tools.aqua:z3-turnkey:4.13.x`       | Z3 SMT solver with bundled native libs |
+| PostgreSQL JDBC | `org.postgresql:postgresql:42.x.x`   | Database connectivity                  |
+| HikariCP        | `com.zaxxer:HikariCP:5.x.x`          | Connection pooling                     |
+| Clikt           | `com.github.ajalt.clikt:clikt:4.x.x` | CLI framework                          |
 
 ### 1.4 Test Dependencies
 
-| Dependency | Coordinates | Purpose |
-|---|---|---|
-| JUnit 5 | `org.junit.jupiter:junit-jupiter:5.x.x` | Test framework |
-| Kotest Assertions | `io.kotest:kotest-assertions-core:5.x.x` | Fluent assertions |
-| Kotest Property | `io.kotest:kotest-property:5.x.x` | Property-based testing |
-| Testcontainers Core | `org.testcontainers:testcontainers:1.x.x` | Container management |
-| Testcontainers PG | `org.testcontainers:postgresql:1.x.x` | PostgreSQL container |
-| Testcontainers JUnit | `org.testcontainers:junit-jupiter:1.x.x` | JUnit 5 integration |
+| Dependency           | Coordinates                               | Purpose                |
+|----------------------|-------------------------------------------|------------------------|
+| JUnit 5              | `org.junit.jupiter:junit-jupiter:5.x.x`   | Test framework         |
+| Kotest Assertions    | `io.kotest:kotest-assertions-core:5.x.x`  | Fluent assertions      |
+| Kotest Property      | `io.kotest:kotest-property:5.x.x`         | Property-based testing |
+| Testcontainers Core  | `org.testcontainers:testcontainers:1.x.x` | Container management   |
+| Testcontainers PG    | `org.testcontainers:postgresql:1.x.x`     | PostgreSQL container   |
+| Testcontainers JUnit | `org.testcontainers:junit-jupiter:1.x.x`  | JUnit 5 integration    |
 
 ### 1.5 ANTLR Wiring
 
@@ -484,26 +484,26 @@ pg-policy-engine/
 
 ## 5. Stubbed vs. Fully Implemented Summary
 
-| Feature | PoC Status | Phase 1 |
-|---|---|---|
-| Grammar (core subset) | Full | Extended with `fn()`, `tagged()`, `NOT` |
-| Grammar (`fn()` value source) | Stubbed | Full |
-| Grammar (`tagged()` selector) | Not present | Full |
-| Grammar (`NOT` selector) | Not present | Full |
-| Normalization (6 rules, syntactic) | Full | Full |
-| Normalization (semantic subsumption) | Not present | Full (via SMT) |
-| SMT encoding (atoms, clauses) | Full | Full |
-| SMT encoding (traversals) | Full | Validated with more edge cases |
-| Session variable type casting | Stub (text only) | Full (all types per ADR 9.2) |
-| Compile-time round-trip | Not present | Full (ADR 9.1) |
-| SQL compilation (atoms, traversals) | Full | Extended with `fn()` |
-| Selector evaluation | Full (PoC subset) | Extended with `tagged()`, `NOT` |
-| Introspection (policies, RLS status) | Full | Full |
-| Introspection (GRANTs) | Not present | Full |
-| Drift detection (5 of 7 types) | Full | Full (7 of 7) |
-| Reconciliation (SQL generation) | Full (dry-run) | Full (execution) |
-| CLI commands | Full | Extended with `--config` |
-| `pgpe.yaml` configuration | Not present | Full |
+| Feature                              | PoC Status        | Phase 1                                 |
+|--------------------------------------|-------------------|-----------------------------------------|
+| Grammar (core subset)                | Full              | Extended with `fn()`, `tagged()`, `NOT` |
+| Grammar (`fn()` value source)        | Stubbed           | Full                                    |
+| Grammar (`tagged()` selector)        | Not present       | Full                                    |
+| Grammar (`NOT` selector)             | Not present       | Full                                    |
+| Normalization (6 rules, syntactic)   | Full              | Full                                    |
+| Normalization (semantic subsumption) | Not present       | Full (via SMT)                          |
+| SMT encoding (atoms, clauses)        | Full              | Full                                    |
+| SMT encoding (traversals)            | Full              | Validated with more edge cases          |
+| Session variable type casting        | Stub (text only)  | Full (all types per ADR 9.2)            |
+| Compile-time round-trip              | Not present       | Full (ADR 9.1)                          |
+| SQL compilation (atoms, traversals)  | Full              | Extended with `fn()`                    |
+| Selector evaluation                  | Full (PoC subset) | Extended with `tagged()`, `NOT`         |
+| Introspection (policies, RLS status) | Full              | Full                                    |
+| Introspection (GRANTs)               | Not present       | Full                                    |
+| Drift detection (5 of 7 types)       | Full              | Full (7 of 7)                           |
+| Reconciliation (SQL generation)      | Full (dry-run)    | Full (execution)                        |
+| CLI commands                         | Full              | Extended with `--config`                |
+| `pgpe.yaml` configuration            | Not present       | Full                                    |
 
 ---
 
@@ -511,12 +511,12 @@ pg-policy-engine/
 
 Golden files are derived directly from the spec and serve as the definitive correctness oracle.
 
-| Golden File | Spec Source | Validates |
-|---|---|---|
-| `appendix-a1.policy` | Appendix A.1 | Parser: 3 policy definitions parse to correct AST |
-| `appendix-a5.sql` | Appendix A.5 | Compiler: character-identical SQL output |
-| `section-9-6-input.json` | Section 9.6 | Normalizer input: 4 clauses |
-| `section-9-6-output.json` | Section 9.6 | Normalizer output: 2 clauses (after rules 3, 5) |
-| `appendix-a7.json` | Appendix A.7 | Drift detector: RLS disabled + extra policy |
+| Golden File               | Spec Source  | Validates                                         |
+|---------------------------|--------------|---------------------------------------------------|
+| `appendix-a1.policy`      | Appendix A.1 | Parser: 3 policy definitions parse to correct AST |
+| `appendix-a5.sql`         | Appendix A.5 | Compiler: character-identical SQL output          |
+| `section-9-6-input.json`  | Section 9.6  | Normalizer input: 4 clauses                       |
+| `section-9-6-output.json` | Section 9.6  | Normalizer output: 2 clauses (after rules 3, 5)   |
+| `appendix-a7.json`        | Appendix A.7 | Drift detector: RLS disabled + extra policy       |
 
 Golden files live in `src/test/resources/golden/`. Tests compare module output against these files byte-for-byte (SQL) or structurally (JSON). Any spec change that modifies these appendices requires updating the corresponding golden file.

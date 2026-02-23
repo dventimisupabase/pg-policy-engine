@@ -10,13 +10,13 @@
 
 **pg-policy-engine** (pgpe) is a command-line tool that governs PostgreSQL Row-Level Security (RLS) policies through a formally verifiable pipeline. Security engineers author policies in a restricted domain-specific language (DSL), and the tool analyzes, compiles, applies, monitors, and reconciles those policies against live databases.
 
-| Document | Role |
-|---|---|
-| [Policy Algebra Specification](policy-algebra.md) | Formal algebra: definitions, theorems, proofs, algorithms |
-| [Architecture Decision Record](architecture-decision.md) | Technology choices, trade-offs, evaluation rubric |
-| **This document** | **Who** uses the system and **what** it must do |
-| [Design Document](design.md) | How the software is structured (modules, data flow, contracts) |
-| [Implementation Plan](implementation-plan.md) | What to build in what order (milestones, dependencies, exit criteria) |
+| Document                                                 | Role                                                                  |
+|----------------------------------------------------------|-----------------------------------------------------------------------|
+| [Policy Algebra Specification](policy-algebra.md)        | Formal algebra: definitions, theorems, proofs, algorithms             |
+| [Architecture Decision Record](architecture-decision.md) | Technology choices, trade-offs, evaluation rubric                     |
+| **This document**                                        | **Who** uses the system and **what** it must do                       |
+| [Design Document](design.md)                             | How the software is structured (modules, data flow, contracts)        |
+| [Implementation Plan](implementation-plan.md)            | What to build in what order (milestones, dependencies, exit criteria) |
 
 This PRD defines the *users* and *requirements*. The spec defines *how the algebra works*. The ADR defines *which tools and why*.
 
@@ -155,26 +155,26 @@ Stories are organized by governance loop phase (spec Section 12).
 
 ## 5. Scope Boundaries
 
-| Feature | PoC | Phase 1 | Phase 2+ |
-|---|:---:|:---:|:---:|
-| Parse 3 Appendix A policies | Yes | Yes | Yes |
-| Normalization (6 rewrite rules) | Yes | Yes | Yes |
-| SMT tenant isolation proof | Yes | Yes | Yes |
-| SQL compilation (atoms, clauses, traversals) | Yes | Yes | Yes |
-| Drift detection (5 of 7 types) | Yes | Yes | Yes |
-| CLI (`analyze`, `compile`, `apply`, `monitor`) | Yes | Yes | Yes |
-| Session variable type casting | Stub | Yes | Yes |
-| `fn()` value source | No | Yes | Yes |
-| `tagged()` selector | No | Yes | Yes |
-| `NOT` selector combinator | No | Yes | Yes |
-| GRANT management (drift types 4-5) | No | Yes | Yes |
-| Compile-time round-trip validation | No | Yes | Yes |
-| Reconciliation execution (not just dry-run) | No | Yes | Yes |
-| `pgpe.yaml` configuration file | No | Yes | Yes |
-| Multiple policy directories | No | No | Yes |
-| Policy versioning / history | No | No | Yes |
-| Web UI / dashboard | No | No | Yes |
-| Multi-database orchestration | No | No | Yes |
+| Feature                                        | PoC  | Phase 1 | Phase 2+ |
+|------------------------------------------------|:----:|:-------:|:--------:|
+| Parse 3 Appendix A policies                    | Yes  |   Yes   |   Yes    |
+| Normalization (6 rewrite rules)                | Yes  |   Yes   |   Yes    |
+| SMT tenant isolation proof                     | Yes  |   Yes   |   Yes    |
+| SQL compilation (atoms, clauses, traversals)   | Yes  |   Yes   |   Yes    |
+| Drift detection (5 of 7 types)                 | Yes  |   Yes   |   Yes    |
+| CLI (`analyze`, `compile`, `apply`, `monitor`) | Yes  |   Yes   |   Yes    |
+| Session variable type casting                  | Stub |   Yes   |   Yes    |
+| `fn()` value source                            |  No  |   Yes   |   Yes    |
+| `tagged()` selector                            |  No  |   Yes   |   Yes    |
+| `NOT` selector combinator                      |  No  |   Yes   |   Yes    |
+| GRANT management (drift types 4-5)             |  No  |   Yes   |   Yes    |
+| Compile-time round-trip validation             |  No  |   Yes   |   Yes    |
+| Reconciliation execution (not just dry-run)    |  No  |   Yes   |   Yes    |
+| `pgpe.yaml` configuration file                 |  No  |   Yes   |   Yes    |
+| Multiple policy directories                    |  No  |   No    |   Yes    |
+| Policy versioning / history                    |  No  |   No    |   Yes    |
+| Web UI / dashboard                             |  No  |   No    |   Yes    |
+| Multi-database orchestration                   |  No  |   No    |   Yes    |
 
 **Explicit exclusions** (never in scope):
 - Reverse-engineering existing hand-written RLS policies into DSL
@@ -188,17 +188,17 @@ Stories are organized by governance loop phase (spec Section 12).
 
 ### 6.1 Performance
 
-| Metric | Target |
-|---|---|
-| Parse 3 policies | < 100 ms |
-| Normalize 10-clause policy | < 50 ms |
-| SMT isolation proof (1 table) | < 1 s |
-| SMT full analysis (6 tables) | < 5 s |
-| SQL compilation | < 100 ms |
-| Introspection (6 tables) | < 500 ms |
-| Drift detection | < 200 ms |
-| End-to-end governance loop (100 tables) | < 30 s |
-| CLI cold start (JVM) | < 3 s |
+| Metric                                  | Target   |
+|-----------------------------------------|----------|
+| Parse 3 policies                        | < 100 ms |
+| Normalize 10-clause policy              | < 50 ms  |
+| SMT isolation proof (1 table)           | < 1 s    |
+| SMT full analysis (6 tables)            | < 5 s    |
+| SQL compilation                         | < 100 ms |
+| Introspection (6 tables)                | < 500 ms |
+| Drift detection                         | < 200 ms |
+| End-to-end governance loop (100 tables) | < 30 s   |
+| CLI cold start (JVM)                    | < 3 s    |
 
 Performance targets are informational during PoC (ADR Section 10.2.2). "Acceptable" threshold is 2x target.
 
@@ -275,15 +275,15 @@ Performance targets are informational during PoC (ADR Section 10.2.2). "Acceptab
 
 ## 9. Glossary
 
-| Term | Definition |
-|---|---|
-| Atom | Irreducible boolean comparison: `(left, op, right)` or `(source, unary_op)` |
-| Clause | Conjunction (AND) of atoms |
-| Policy | Named, typed rule: `(name, type, commands, selector, clauses)` |
-| PolicySet | Complete collection of policies governing a database |
-| Selector | Predicate over table metadata determining which tables a policy governs |
-| Traversal | `exists(relationship, clause)` — follows FK to prove property on related table |
-| Drift | Discrepancy between expected (compiled) and observed (introspected) database state |
-| Normalization | Applying rewrite rules to reduce a policy to canonical form |
+| Term          | Definition                                                                         |
+|---------------|------------------------------------------------------------------------------------|
+| Atom          | Irreducible boolean comparison: `(left, op, right)` or `(source, unary_op)`        |
+| Clause        | Conjunction (AND) of atoms                                                         |
+| Policy        | Named, typed rule: `(name, type, commands, selector, clauses)`                     |
+| PolicySet     | Complete collection of policies governing a database                               |
+| Selector      | Predicate over table metadata determining which tables a policy governs            |
+| Traversal     | `exists(relationship, clause)` — follows FK to prove property on related table     |
+| Drift         | Discrepancy between expected (compiled) and observed (introspected) database state |
+| Normalization | Applying rewrite rules to reduce a policy to canonical form                        |
 
 See spec Appendix B for the full glossary.
