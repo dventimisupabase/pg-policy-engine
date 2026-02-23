@@ -56,9 +56,32 @@ No runtime dependencies are installed on the target database. pgpe connects as a
 
 ## Project Status
 
-**Current phase: pre-implementation.** The specification is complete and the implementation is planned but not yet started.
+**Current phase: MVP scaffold implemented.** A working Kotlin CLI now supports policy parsing, lightweight tenant-isolation analysis, deterministic SQL compilation, and SQL drift comparison for baseline governance workflows.
 
-See the [Technical Implementation Plan](spec/implementation-plan.md) for milestone details and the PoC roadmap.
+See the [Technical Implementation Plan](spec/implementation-plan.md) for milestone details and the remaining roadmap beyond this MVP scaffold.
+
+
+## MVP Quickstart
+
+```bash
+./gradlew run --args="parse --file policies/tenant-isolation.policy"
+./gradlew run --args="analyze --file policies/tenant-isolation.policy --format json"
+./gradlew run --args="compile --file policies/tenant-isolation.policy --table public.accounts"
+```
+
+> Note: This MVP intentionally uses a restricted parser/analyzer implementation and does not yet include ANTLR, Z3, or live PostgreSQL apply/introspection flows.
+
+### Kotlin plugin resolution in restricted networks
+
+If `./gradlew` fails with `403 Forbidden` while resolving `org.jetbrains.kotlin.jvm`, configure an internal Maven proxy/mirror and export:
+
+```bash
+export PGPE_MAVEN_REPO_URL="https://<your-artifact-proxy>/maven"
+export PGPE_MAVEN_REPO_USER="<username>"
+export PGPE_MAVEN_REPO_PASSWORD="<password>"
+```
+
+`settings.gradle.kts` will use that mirror for both plugin resolution and normal dependencies before falling back to public repositories.
 
 ## Documentation
 

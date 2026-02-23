@@ -1,0 +1,4 @@
+POLICY tenant_isolation
+FOR SELECT, INSERT, UPDATE, DELETE
+SELECTOR has_column('tenant_id')
+CLAUSE col('tenant_id') = session('app.tenant_id')
