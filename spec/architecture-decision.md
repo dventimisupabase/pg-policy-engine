@@ -936,9 +936,13 @@ The PoC is considered successful if:
 
 ## 8. Open Questions
 
-These are specific issues the PoC must resolve.  They are ordered by risk.
+These are specific issues identified during ADR development.  Some have been
+resolved through analysis of the formal specification; others remain open for
+the PoC to validate empirically.  They are ordered by risk.
 
 ### 8.1 SQL Expression Comparison for Drift Detection
+
+**Status**: Narrowed — recommended approach identified, PoC must validate.
 
 The drift detection algorithm (Section 11.4) compares USING expressions:
 `op.using_expr ≠ ep.using_expr`.  But PostgreSQL's `pg_policies.qual` column
@@ -957,7 +961,7 @@ But `pg_policies.qual` may return:
 (tenant_id = current_setting('app.tenant_id'::text))
 ```
 
-**Options**:
+**Options considered**:
 - **Option 1: Textual normalization** — strip whitespace, normalize quoting,
   and compare strings.  Fragile across PostgreSQL versions.
 - **Option 2: AST comparison** — parse both expressions back to an AST and
@@ -965,24 +969,35 @@ But `pg_policies.qual` may return:
 - **Option 3: Recompile-and-compare** — always drop and recreate policies,
   treating the compiled output as the source of truth.  Avoids comparison
   entirely but makes every reconciliation cycle destructive.
-- **Option 4: Hash-based comparison** — at compile time, the engine records a
-  hash of the expected SQL expression string.  At monitor time, it round-trips
-  the expression through PostgreSQL: `CREATE POLICY` in a transaction, read
-  back the decompiled form from `pg_policies`, then `ROLLBACK`.  The
-  decompiled form is compared to the observed expression.  This sidesteps the
-  normalization problem entirely by letting PostgreSQL be the normalizer.
-  Trade-off: requires a transaction per policy check, which may be too
-  expensive for large policy sets.
+- **Option 4: Compile-time round-trip** (recommended) — at compile time, the
+  engine creates each policy in a transaction, reads back the decompiled form
+  from `pg_policies`, then rolls back.  The decompiled form is stored as part
+  of the expected state alongside the original SQL.  At monitor time, the
+  engine compares the stored decompiled form against the observed decompiled
+  form — both have passed through the same PostgreSQL decompiler, so they
+  should match.  This sidesteps the normalization problem entirely by letting
+  PostgreSQL be the normalizer.
+
+**Why Option 4 is viable**: the compile step already requires a database
+connection for introspection (selector evaluation needs table metadata from
+Section 6.2).  The round-trip adds one transaction per policy at compile time
+— a one-time cost, not a per-monitor cost.
+
+**Residual risk**: if the PostgreSQL major version changes between compile and
+monitor, the decompiled forms could diverge.  Mitigation: re-compile when the
+target PostgreSQL version changes.
 
 **Scope note**: regardless of comparison strategy, expression comparison is
 only attempted for **managed** policies — those whose names match the compiled
 expected state (Section 1.6.2).  Foreign policies (names not in the expected
 state) are reported as `extra_policy` without expression comparison.
 
-The PoC should test these approaches against a real PostgreSQL instance to
-determine which is reliable.
+The PoC should validate Option 4 against a real PostgreSQL instance to confirm
+that the round-trip produces stable, comparable decompiled forms.
 
 ### 8.2 Session Variable Type Casting
+
+**Status**: Narrowed — recommended approach identified, PoC must validate.
 
 `current_setting()` returns `text` (Section 2.1).  When comparing to a
 `uuid` column like `tenant_id`, an explicit cast is needed:
@@ -991,17 +1006,35 @@ determine which is reliable.
 tenant_id = current_setting('app.tenant_id')::uuid
 ```
 
-The spec's compilation function (Section 10.2) does not explicitly address
-type casting.  The PoC must determine:
+The spec's compilation function (Section 10.2) compiles `session(k)` to
+`current_setting('k')` without explicit casts, but the spec also states that
+type compatibility is enforced at policy definition time (Definition 2.2).
+This implies the compiler has access to type information and can act on it.
 
-- Where type information is available (from the table metadata context,
-  Section 6.2)
-- Whether the cast should be added during compilation or via a PL/pgSQL
-  helper function (Role A from Section 3.2)
-- Whether PostgreSQL's implicit casting is sufficient for some type
-  combinations
+**Resolution**: the compiler should emit explicit casts during compilation,
+using column type metadata from the table metadata context (Section 6.2).
+The compilation rule for session comparisons becomes:
+
+```
+(col(x), =, session(k))  →  "x = current_setting('k')::<type_of(x)>"
+```
+
+where `type_of(x)` is the column's PostgreSQL type as reported by the
+system catalog.  For `text` columns, the cast is omitted (it is the native
+return type of `current_setting()`).
+
+This approach is preferred over PL/pgSQL helper functions (Role A) because:
+- It requires no additional objects on the target database (consistent with
+  the leave-no-trace constraint, Section 1.6.1)
+- It makes the cast visible in the compiled SQL, aiding debugging
+- It avoids a function-call overhead per row evaluation
+
+The PoC should validate that explicit casts produce correct results for the
+common column types: `uuid`, `integer`, `bigint`, `boolean`, `timestamp`.
 
 ### 8.3 Z3 Performance on Realistic Policy Sets
+
+**Status**: Open — deferred to PoC benchmarks.
 
 The spec's analysis operations (Section 8) assume the SMT solver is "fast
 enough" with a 5-second timeout.  For the PoC's small example, this is
@@ -1011,48 +1044,85 @@ trivially satisfied.  But realistic deployments may have:
 - Complex selectors matching hundreds of tables
 - Traversal atoms creating large existential formulas
 
+**Theoretical risk assessment**: the formulas belong to decidable fragments
+(QF-LIA ∪ QF-EUF) for which Z3 has well-optimized decision procedures.
+Simple atom comparisons and clause conjunctions produce small formulas.  The
+primary risk is traversal atom encoding: each `exists(rel(...), clause)`
+introduces existentially quantified variables for the target table row
+(Section 8.1), and nested traversals (depth 2+) compound this.  However,
+the spec bounds traversal depth globally (Section 7.3, default D=2), which
+limits formula growth.
+
 The PoC should measure Z3's wall-clock time for:
 - Single-clause satisfiability
 - Pairwise clause subsumption
 - Full tenant isolation proof with N policies × M tables
 
 If Z3 is too slow, mitigation options include: caching results, incremental
-solving, or restricting analysis to changed policies only.
+solving, restricting analysis to changed policies only, or decomposing
+per-table isolation proofs to avoid combinatorial blowup.
 
 ### 8.4 Grammar Disambiguation
 
-The `AND` keyword appears in two contexts:
-- **Clause-level**: `atom AND atom` (conjunction within a clause)
-- **Selector-level**: `selector AND selector` (intersection of table sets)
+**Status**: Resolved — no grammar change needed.
 
-These are syntactically distinguished by their position (inside `CLAUSE`
-blocks vs. inside `SELECTOR` blocks), but a naive parser may struggle.
-The PoC must verify that the chosen parser generator handles this correctly
-or identify a grammar refactoring (e.g., using distinct keywords like
-`WHERE` for clause conjunction).
+The `AND` keyword appears in two contexts:
+- **Clause-level**: `<clause> ::= <atom> ("AND" <atom>)*` — conjunction
+  within a clause
+- **Selector-level**: `<selector> ::= <selector> "AND" <selector>` —
+  intersection of table sets
+
+These belong to **distinct non-terminals** in the BNF grammar (Section 13).
+Clause-level `AND` appears only within `<clause>` productions (inside
+`CLAUSE` blocks), while selector-level `AND` appears only within `<selector>`
+productions (inside `SELECTOR` blocks).  Any context-free parser generator
+— ANTLR, lark, instaparse, pest, nearley — handles this disambiguation
+automatically because the parser's state (which production it is currently
+matching) determines which `AND` interpretation applies.  No grammar
+refactoring or distinct keywords are required.
 
 ### 8.5 Relationship Declaration Format
 
-Section 7.1 defines relationships as 4-tuples but does not specify how they
-are declared in the policy file.  The PoC must choose:
+**Status**: Resolved — inline in the DSL.
 
-- Inline in the policy DSL (as implied by the `rel()` syntax in traversal
-  atoms)
-- In a separate configuration file (e.g., `relationships.yaml`)
-- Inferred from database foreign-key constraints (contradicts the spec's
-  "declared explicitly" requirement, but could serve as a convenience with
-  explicit confirmation)
+Section 7.1 defines relationships as 4-tuples and states they are "declared
+explicitly in the policy configuration, not inferred from database
+constraints."  The `rel()` syntax inside `exists()` traversal atoms is both
+the declaration and the use — the relationship is specified inline where it
+is needed:
+
+```
+exists(
+  rel(_, project_id, projects, id),
+  {col('tenant_id') = session('app.tenant_id')}
+)
+```
+
+A separate `relationships.yaml` file is unnecessary indirection: the
+relationship is meaningful only in the context of the traversal atom that
+uses it, and the DSL syntax already captures the full 4-tuple.  The compiler
+can extract all declared relationships from the AST if a global relationship
+registry is needed (e.g., for validation against database foreign keys as a
+convenience check).
 
 ### 8.6 The `_` Wildcard in Traversal Atoms
 
-Appendix A.1 uses `rel(_, project_id, projects, id)` where `_` appears
-to mean "the current table."  The spec does not formally define this
-wildcard.  The PoC must determine whether `_` is:
+**Status**: Resolved — syntactic placeholder for the source table.
 
-- A syntactic placeholder resolved at selector evaluation time (the source
-  table is the table matched by the policy's selector)
-- An explicit identifier that must match the governed table name
-- Something else entirely
+Appendix A.1 uses `rel(_, project_id, projects, id)` where `_` represents
+the source table.  The spec's worked example (Section 7.5) confirms this:
+when the policy's selector matches `tasks`, the `_` resolves to `tasks` and
+the compiled SQL produces `projects.id = tasks.project_id`.
+
+`_` is a **syntactic placeholder resolved at compile time**.  The source
+table is the table matched by the policy's selector during compilation.
+This means:
+
+- The parser treats `_` as a reserved token in the first position of `rel()`
+- The compiler substitutes the actual table name when generating SQL for
+  each selector-matched table
+- The same policy can apply to multiple tables (e.g., `tasks` and `files`)
+  with `_` resolving differently for each
 
 ---
 
