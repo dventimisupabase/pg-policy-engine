@@ -1103,6 +1103,9 @@ The PoC is considered successful if:
 5. Drift detection correctly identifies at least: RLS disabled, missing
    policy, extra policy
 
+Section 10 defines the complete testing strategy and evaluation rubric that
+subsumes and extends these exit criteria.
+
 ---
 
 ## 9. Open Questions
@@ -1347,6 +1350,326 @@ This means:
 
 ---
 
+## 10. Testing Strategy and Evaluation Rubric
+
+Section 8 defines the PoC scope — what to build.  Section 8.6 lists five
+binary pass/fail exit criteria — the minimal gates.  This section defines
+how the PoC is tested (10.1) and how it is evaluated holistically (10.2).
+The testing strategy and evaluation rubric subsume the Section 8.6 exit
+criteria: every exit criterion maps to one or more test cases below, and
+the rubric adds dimensions (performance, architectural fitness, code
+quality, production-readiness) that binary pass/fail cannot capture.
+
+### 10.1 Testing Strategy
+
+Tests are organized by test type, not by subsystem.  Each test traces to
+its specification source.
+
+#### 10.1.1 Unit Tests
+
+Unit tests validate individual subsystem behavior in isolation, with no
+external dependencies (no PostgreSQL, no Z3 for parser/normalization/
+compiler tests).
+
+**Parser tests**:
+
+| Test case | Input | Expected output | Spec reference |
+|-----------|-------|-----------------|----------------|
+| Parse tenant_isolation policy | Appendix A.1, policy 1 | AST with permissive type, 4 commands, has_column selector, single equality clause | 4.1, 13 |
+| Parse tenant_isolation_via_project policy | Appendix A.1, policy 2 | AST with traversal atom, rel() with wildcard source | 7.1–7.3, 13 |
+| Parse soft_delete policy | Appendix A.1, policy 3 | AST with restrictive type, SELECT-only command, literal boolean atom | 4.1, 13 |
+| Parse compound selector | `has_column('x') AND named('y')` | AND selector node with two children | 6.1, 13 |
+| Parse disjunctive selector | `named('tasks') OR named('files')` | OR selector node with two children | 6.1, 13 |
+| Parse multi-clause policy | Two clauses joined by OR CLAUSE | Policy with two clause nodes | 3.1, 13 |
+| Parse all binary operators | Each of `=`, `!=`, `<`, `>`, `<=`, `>=`, `IN`, `NOT IN`, `LIKE`, `NOT LIKE` | Correct operator AST node | 2.1–2.2, 13 |
+| Parse unary operators | `IS NULL`, `IS NOT NULL` | Unary atom AST node | 2.2, 13 |
+| Parse literal types | String, integer, boolean, null, list | Correct literal AST node per type | 13 |
+| Reject malformed input | Missing CLAUSE keyword | Parse error with source location | 13 |
+| Reject unterminated traversal | `exists(rel(_, a, b, c), {col('x') = lit(1)}` — missing `)` | Parse error | 13 |
+
+**Normalization tests**:
+
+| Test case | Input | Expected output | Spec reference |
+|-----------|-------|-----------------|----------------|
+| Idempotence — duplicate atom removal | `{col('a') = lit(1), col('a') = lit(1)}` | `{col('a') = lit(1)}` | Rule 1, Section 9.1 |
+| Absorption | `c1: {A}` OR `c2: {A, B}` | `c1: {A}` | Rule 2, Section 9.1 |
+| Contradiction elimination | `{col('role') = lit('admin'), col('role') = lit('viewer')}` | Clause removed (⊥) | Rule 3, Section 9.2 |
+| Tautology detection | `{col('x') = col('x')}` | Clause becomes ⊤ | Rule 4, Section 9.2 |
+| Subsumption elimination | Section 9.6 worked example (4 clauses → 2) | `c1, c4` only | Rule 5, Section 9.3 |
+| Atom merging — IN-list intersection | `{col('x') IN [1,2,3], col('x') IN [2,3,4]}` | `{col('x') IN [2,3]}` | Rule 6, Section 9.4 |
+| Section 9.6 full worked example | 4-clause input from Section 9.6 | 2-clause output per Section 9.6 | Section 9.6 |
+| Fixpoint convergence | Input requiring multiple passes | Stable output after ≤ N passes | Section 9.5, Property 9.1 |
+| Atom normalization — column-left ordering | `session('k') = col('x')` | `col('x') = session('k')` | Section 2.3 |
+| Atom normalization — operator canonicalization | `col('x') > lit(5)` with non-canonical form | Canonical operator form | Section 2.3 |
+
+**SMT analysis tests** (unit tests use Z3):
+
+| Test case | Input | Expected output | Spec reference |
+|-----------|-------|-----------------|----------------|
+| Satisfiable clause | `{col('x') = lit(1)}` | SAT | Section 8.1 |
+| Contradictory clause | `{col('x') = lit(1), col('x') = lit(2)}` | UNSAT | Section 8.1, Property 2.1 |
+| Tenant isolation — direct column | tenant_id equality policy on single table | UNSAT (isolation holds) | Section 8.5, Theorem 8.1 |
+| Tenant isolation — traversal | tenant_isolation_via_project on tasks | UNSAT (isolation holds) | Section 8.5, Theorem 8.1 |
+| Subsumption check | Clause A vs. clause A ∧ B | A subsumes A ∧ B | Section 8.2 |
+| Contradiction — effective predicate | Table with contradictory permissive and restrictive policies | Effective predicate UNSAT reported | Section 8.4 |
+| Timeout handling | Formula designed to exceed timeout | UNKNOWN result within timeout bound | Section 8.1 |
+
+**SQL compiler tests**:
+
+| Test case | Input | Expected output | Spec reference |
+|-----------|-------|-----------------|----------------|
+| Compile equality atom | `col('tenant_id') = session('app.tenant_id')` | `tenant_id = current_setting('app.tenant_id')` | Section 10.2 |
+| Compile traversal atom | `exists(rel(_, project_id, projects, id), ...)` | `EXISTS (SELECT 1 FROM projects WHERE projects.id = _.project_id AND ...)` | Section 10.2 |
+| Compile literal boolean | `col('is_deleted') = lit(false)` | `is_deleted = false` | Section 10.2 |
+| Session variable casting — uuid column | `col('tenant_id') = session('app.tenant_id')` on uuid column | `tenant_id = current_setting('app.tenant_id')::uuid` | ADR 9.2 |
+| Session variable casting — text column | `col('name') = session('app.user')` on text column | `name = current_setting('app.user')` (no cast) | ADR 9.2 |
+| Session variable casting — integer column | `col('org_id') = session('app.org_id')` on integer column | `org_id = current_setting('app.org_id')::integer` | ADR 9.2 |
+| Appendix A.5 golden output | All three Appendix A policies | Character-identical match to Appendix A.5 SQL | Appendix A.5, Property 10.2 |
+| Determinism | Compile same input twice | Identical output both times | Property 10.2 |
+| Policy naming convention | tenant_isolation on users table | `tenant_isolation_users` | Section 10.6 |
+
+**Introspection tests** (snapshot-based for unit tests):
+
+| Test case | Input | Expected output | Spec reference |
+|-----------|-------|-----------------|----------------|
+| RLS enabled detection | Snapshot with relrowsecurity = true | RLS status: enabled | Section 11.1 |
+| RLS disabled detection | Snapshot with relrowsecurity = false | RLS status: disabled | Section 11.1 |
+| RLS forced detection | Snapshot with relforcerowsecurity = true | RLS status: forced | Section 11.1 |
+| Policy extraction | Snapshot with pg_policies rows | Structured policy list | Section 11.1 |
+| Expression read-back | Snapshot with pg_policies.qual | Decompiled expression string | Section 11.1, ADR 9.1 |
+
+**Drift detection tests**:
+
+| Test case | Input (observed vs. expected) | Expected drift type | Spec reference |
+|-----------|-------------------------------|---------------------|----------------|
+| Missing policy | Expected has policy, observed does not | `missing_policy` | Section 11.3 |
+| Extra policy | Observed has policy not in expected | `extra_policy` | Section 11.3 |
+| Modified policy | USING expression differs | `modified_policy` | Section 11.3 |
+| Missing GRANT | Expected GRANT absent | `missing_grant` | Section 11.3 |
+| Extra GRANT | Observed GRANT not in expected | `extra_grant` | Section 11.3 |
+| RLS disabled | Expected enabled, observed disabled | `rls_disabled` | Section 11.3 |
+| RLS not forced | Expected forced, observed not forced | `rls_not_forced` | Section 11.3 |
+| Foreign policy classification | Unrecognized policy name on governed table | `extra_policy` (Warning) | ADR 1.6.2 |
+
+#### 10.1.2 Property-Based Tests
+
+Property-based tests use random input generators with algebraic property
+assertions.  These are directly executable versions of the specification's
+proved properties.
+
+**Generator bounds**: policies with max 5 clauses, max 5 atoms per clause,
+traversal depth 0–2, value sources drawn from `col`, `session`, `lit`.
+
+**Normalization properties**:
+
+| Property | Assertion | Generator | Spec reference |
+|----------|-----------|-----------|----------------|
+| Idempotence | `normalize(normalize(p)) = normalize(p)` | Random policy | Property 9.1 |
+| Denotation preservation | `denote(p) = denote(normalize(p))` (via SMT equivalence check) | Random policy | Property 9.2 |
+| Termination | `normalize(p)` completes within bounded iterations | Random policy | Property 9.1 (termination proof) |
+| Clause count non-increase | `clauseCount(normalize(p)) ≤ clauseCount(p)` | Random policy | Section 9.3 |
+| Normal form stability | If `p` is already in normal form, `normalize(p) = p` | Pre-normalized policy | Section 9.5 |
+
+**Compilation properties**:
+
+| Property | Assertion | Generator | Spec reference |
+|----------|-----------|-----------|----------------|
+| Determinism | `compile(p) = compile(p)` across invocations | Random normalized policy | Property 10.2 |
+
+**Composition properties**:
+
+| Property | Assertion | Generator | Spec reference |
+|----------|-----------|-----------|----------------|
+| Permissive monotonicity | Adding a permissive policy does not reduce the accessible row set | Random policy pair | Property 5.1 |
+| Restrictive anti-monotonicity | Adding a restrictive policy does not increase the accessible row set | Random policy pair | Property 5.2 |
+
+#### 10.1.3 Integration Tests
+
+Integration tests require live PostgreSQL (via Testcontainers) and/or Z3.
+
+**Compile-time round-trip** (ADR 9.1 strategy):
+
+| Test case | Steps | Expected outcome | Spec reference |
+|-----------|-------|------------------|----------------|
+| Round-trip expression fidelity | Create policy in transaction → read back `pg_policies.qual` → rollback → compare | Decompiled form matches stored expected form | ADR 9.1 |
+| Round-trip with explicit casts | Create policy with `::uuid` cast → read back → compare | Cast preserved in decompiled form | ADR 9.1, 9.2 |
+
+**End-to-end governance loop** (Appendix A lifecycle):
+
+| Test case | Steps | Expected outcome | Spec reference |
+|-----------|-------|------------------|----------------|
+| Full lifecycle | Parse (A.1) → normalize → compile (A.5) → apply → introspect → verify zero drift | All stages succeed, drift report empty | Appendix A.1–A.9, Section 12.1 |
+| Drift introduction and detection | Apply policies → manually disable RLS → run monitor | `rls_disabled` drift detected | Appendix A.7, Section 11.3 |
+| Drift reconciliation | Detect drift → run reconcile → re-monitor | Drift resolved, zero drift on re-check | Appendix A.9, Section 11.5 |
+
+**SMT solver integration**:
+
+| Test case | Steps | Expected outcome | Spec reference |
+|-----------|-------|------------------|----------------|
+| JNI connectivity | Load Z3 via z3-turnkey → create solver → check trivial formula | SAT result returned | Section 8.1 |
+| SAT/UNSAT verification | Submit known-SAT and known-UNSAT formulas | Correct results for both | Section 8.1 |
+| Timeout handling | Submit expensive formula with short timeout | UNKNOWN returned within timeout | Section 8.1 |
+| Appendix A benchmark | Run full analysis on Appendix A policy set | All operations complete in < 1 s | Section 8.1, ADR 9.3 |
+
+**PostgreSQL introspection**:
+
+| Test case | Steps | Expected outcome | Spec reference |
+|-----------|-------|------------------|----------------|
+| Apply and introspect | Apply compiled policies → introspect → diff | Zero drift detected | Section 11.1–11.4 |
+| Introspect RLS status | Enable/force RLS → query pg_class | Correct status reported | Section 11.1 |
+| Introspect policy expressions | Create policy → read pg_policies.qual | Expression matches decompiled form | Section 11.1, ADR 9.1 |
+
+#### 10.1.4 Spec Compliance Tests
+
+Spec compliance tests are golden-file tests using the specification's own
+worked examples as fixed test vectors.  These tests ensure the implementation
+produces output identical to the specification's examples.
+
+| Golden file | Source | Content verified | Spec reference |
+|-------------|--------|------------------|----------------|
+| Appendix A.1 — policy definitions | Appendix A.1 | Parse without error, AST structure matches | Appendix A.1, Section 13 |
+| Appendix A.3 — selector resolution | Appendix A.3 | Correct table-to-policy mapping | Appendix A.3, Section 6.2 |
+| Appendix A.5 — compiled SQL | Appendix A.5 | Character-identical SQL output | Appendix A.5, Section 10.2 |
+| Appendix A.7 — drift report | Appendix A.7 | Correct drift types and details | Appendix A.7, Section 11.3 |
+| Appendix A.9 — reconciliation | Appendix A.9 | Correct reconciliation actions | Appendix A.9, Section 11.5 |
+| Section 9.6 — normalization example | Section 9.6 | 4 clauses → 2 clauses, exact output match | Section 9.6 |
+| Section 10.7 — compilation example | Section 10.7 | SQL output matches worked example | Section 10.7 |
+| Section 8.1 — contradiction examples | Section 8.1 | SMT correctly identifies contradictions | Section 8.1 |
+
+#### 10.1.5 Testing Infrastructure
+
+Practical tooling decisions for the Kotlin/JVM implementation:
+
+- **JUnit 5** for unit and integration tests.  JUnit 5's `@Tag` annotation
+  separates fast unit tests from slow integration tests.
+- **Kotest property testing module** (or **jqwik** as an alternative) for
+  property-based tests.  Kotest integrates with JUnit 5 and provides
+  generators, shrinking, and seed replay.
+- **Testcontainers** for disposable PostgreSQL instances.  Each integration
+  test gets a fresh PostgreSQL container, ensuring test isolation and
+  eliminating shared-state failures.
+- **z3-turnkey** for Z3 native library resolution.  The same dependency
+  used in production resolves Z3 in the test environment with no additional
+  configuration.
+- **Golden files** stored as test resources under `src/test/resources/golden/`.
+  Each golden file is a plain text file containing the expected output for
+  a spec compliance test.  Tests compare actual output against the golden
+  file and fail on any difference.
+
+### 10.2 Evaluation Rubric
+
+Five dimensions, each with concrete criteria and grade thresholds.  The
+rubric evaluates the PoC holistically — not just whether it passes, but
+how well it passes.
+
+#### 10.2.1 Correctness
+
+Correctness is all-or-nothing: the implementation either satisfies the
+specification's theorems and properties or it does not.  There is no
+partial credit.
+
+| Criterion | Measurement method | Spec reference |
+|-----------|--------------------|----------------|
+| Normalization preserves denotation | Property-based test: SMT equivalence of input and output for 10,000+ random inputs | Property 9.2 |
+| Normalization is idempotent | Property-based test: `normalize(normalize(p)) = normalize(p)` for 10,000+ random inputs | Property 9.1 |
+| Compilation is deterministic | Property-based test: same input produces identical SQL across invocations | Property 10.2 |
+| Tenant isolation holds | SMT proof returns UNSAT for all governed tables in Appendix A | Theorem 8.1 |
+| Contradiction detection is sound | SMT correctly identifies known-contradictory and known-satisfiable formulas | Section 8.1, 8.4 |
+| Subsumption is correct | SMT implication checks agree with manual analysis for all Appendix A policy pairs | Section 8.2 |
+| Compiled SQL matches specification | Golden-file comparison against Appendix A.5 | Appendix A.5, Theorem 10.1 |
+| Drift detection identifies all seven types | Unit tests cover all drift types from Section 11.3 | Section 11.3 |
+| Rewrite rules are faithfully implemented | Unit tests for each of the six rules (Rules 1–6) | Sections 9.1–9.4 |
+
+**Grade**: Pass (all criteria met) or Fail (any criterion not met).
+
+#### 10.2.2 Performance
+
+Performance targets are calibrated for a CLI tool that runs infrequently
+(e.g., during CI/CD or manual governance cycles).  These targets are
+informational at the PoC stage — they validate that the architecture is
+not fundamentally flawed, but they are not gating.
+
+| Subsystem | Target | Measurement |
+|-----------|--------|-------------|
+| Parse (3 policies) | < 100 ms | Wall-clock time, cold parser |
+| Normalize (10-clause policy) | < 50 ms | Wall-clock time, fixpoint loop |
+| SMT isolation (1 table) | < 1 s | Z3 solving time |
+| SMT full analysis (6 tables) | < 5 s | Total Z3 time across all tables |
+| Compile (all policies) | < 100 ms | Wall-clock time |
+| Introspect (6 tables) | < 500 ms | Wall-clock time including network |
+| Drift detect (6 tables) | < 200 ms | Wall-clock time, comparison only |
+| End-to-end | < 10 s | Full governance loop |
+| JVM cold start | < 3 s | Time to first useful output |
+
+**Grade**:
+- **Pass**: all targets met.
+- **Acceptable**: all targets within 2× (e.g., parse < 200 ms).
+- **Fail**: any target exceeded by >10×.
+
+Performance is informational at PoC stage, not gating.  A Fail grade
+triggers investigation but does not block the PoC exit criteria.
+
+#### 10.2.3 Architectural Fitness
+
+Architectural fitness evaluates whether the implementation's structure
+supports the specification's composability requirements and enables
+Phase 1+ extensions.
+
+| Criterion | What it means |
+|-----------|---------------|
+| Subsystem independence | Parser, normalizer, SMT analyzer, compiler, introspector, and drift detector are independently testable modules with no circular dependencies |
+| Data-boundary contracts | Subsystems communicate through the sealed class AST — no shared mutable state, no side channels |
+| Testability without external deps | Parser, normalization, and compiler unit tests run without PostgreSQL or Z3 |
+| Exhaustive `when` expressions | Every `when` over a sealed class hierarchy covers all subtypes without an `else` branch |
+| Composable governance loop | The six governance phases (Section 12.1) compose as a pipeline: each phase's output is the next phase's input |
+
+#### 10.2.4 Code Quality
+
+Code quality evaluates Kotlin idiom utilization and engineering
+discipline.  These criteria are specific to the Kotlin/JVM implementation
+recommended in Section 7.
+
+| Criterion | What it means |
+|-----------|---------------|
+| Sealed class hierarchies for all AST sum types | Value sources, atoms, clauses, selectors, and policies are modeled as sealed class hierarchies |
+| Exhaustive `when` without `else` | All pattern matches over sealed types use exhaustive `when` — the compiler verifies completeness |
+| Data classes for structural equality | AST nodes use `data class` so that `equals`, `hashCode`, and `copy` are derived from structure |
+| Null safety — no `!!` outside tests | Production code uses nullable types and safe calls; the non-null assertion operator `!!` is restricted to test code |
+| Immutable AST | AST nodes are immutable `data class` instances; transformations produce new trees |
+| Pipeline-style function composition | The governance loop reads as a pipeline: `parse → normalize → analyze → compile → apply → monitor` |
+| Meaningful error reporting with source locations | Parse errors and validation failures include the source file, line, and column |
+
+#### 10.2.5 Production-Readiness Gates
+
+Production-readiness gates are preconditions for the PoC → Phase 1
+transition.  They are distinct from the PoC exit criteria (Section 8.6):
+exit criteria validate that the PoC *works*, while production-readiness
+gates validate that the PoC *can evolve*.
+
+| Gate | Description | Category |
+|------|-------------|----------|
+| G1 | SMT encoding of traversal atoms validated — Z3 correctly proves isolation through foreign-key joins | Architecture |
+| G2 | Compile-time round-trip viable — `pg_get_expr()` decompiled forms are stable within a PostgreSQL major version | Architecture |
+| G3 | ANTLR grammar handles PoC subset without ambiguity — no parser conflicts, no backtracking | Tooling |
+| G4 | z3-turnkey operational — Z3 native libraries load on macOS (ARM64), Linux (x86-64), and in CI | Tooling |
+| G5 | Testcontainers operational in CI — disposable PostgreSQL instances start and stop reliably | Tooling |
+| G6 | Normalization properties hold under 10,000+ random inputs — no counterexamples found | Correctness |
+| G7 | Performance within targets — all subsystems meet the targets in Section 10.2.2 | Performance |
+| G8 | Architecture supports Phase 1 extensions — adding `fn()`, `tagged()`, `NOT`, and GRANTs does not require structural changes to the AST or governance loop | Extensibility |
+
+**Decision rule**:
+- **G1–G6 must pass.**  G1 or G2 failure indicates a fundamental
+  architectural assumption is wrong — reconsider the SMT encoding strategy
+  or the expression comparison approach.  G3–G6 failure indicates a
+  tooling or testing issue that is likely resolvable without architectural
+  changes.
+- **G7–G8 must be acceptable.**  G7 (performance) within 2× of targets
+  is acceptable at PoC stage.  G8 (extensibility) requires a qualitative
+  assessment that the sealed class hierarchy and governance pipeline can
+  accommodate Phase 1 additions without pervasive refactoring.
+
+---
+
 ## Appendix: Traceability Matrix
 
 Every requirement in Section 1 traces to the spec:
@@ -1361,6 +1684,7 @@ Every requirement in Section 1 traces to the spec:
 | Diff / reconciliation    | 11.2–11.5                           |
 | Policy storage           | 12.1                                |
 | Governance loop          | 12.1–12.5                           |
+| Testing & evaluation     | 8.1–8.5, 9.1–9.6, 10.1–10.7, 11.1–11.5, 14, A.1–A.9 |
 
 Every evaluation dimension in Section 2 ties to a specific requirement:
 
@@ -1372,6 +1696,8 @@ Every evaluation dimension in Section 2 ties to a specific requirement:
 | PostgreSQL client   | 1.5, 1.6             | 11                     |
 | Prototyping speed   | PoC (Section 8)      | All                    |
 | Packaging           | 1.8 (CLI deployment) | 12                     |
+| Testing strategy    | All (1.1–1.6)        | 8–11, 13, 14, Appendix A |
+| Evaluation rubric   | PoC (Section 8)      | 9.1–9.2, 10.1–10.2    |
 
 ---
 
