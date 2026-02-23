@@ -70,7 +70,7 @@ See the [Technical Implementation Plan](spec/implementation-plan.md) for milesto
 | [Design Document](spec/design.md) | Modules, data structures, contracts, and data flow |
 | [Technical Implementation Plan](spec/implementation-plan.md) | Milestones, dependencies, and development setup |
 
-**Interactive explainer:** open [`explainer/index.html`](explainer/index.html) in a browser for a visual walkthrough of the policy algebra.
+**Interactive explainer:** [visual walkthrough of the policy algebra](https://dventimisupabase.github.io/pg-policy-engine/explainer/index.html).
 
 ## License
 
