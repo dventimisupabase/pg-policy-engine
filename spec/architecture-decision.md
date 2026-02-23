@@ -153,14 +153,14 @@ format.  The governance loop (Section 12) requires:
 
 The governance loop (Section 12) defines six phases that map to CLI commands:
 
-| Phase | Operation | Spec section |
-|-------|-----------|-------------|
-| Define | Author/edit `.policy` files | 12.1 |
-| Analyze | Validate policy set (satisfiability, contradiction, isolation) | 12.1, 8 |
-| Compile | Generate SQL from normalized policies | 12.1, 10 |
-| Apply | Execute compiled SQL against target database | 12.1 |
-| Monitor | Introspect database and detect drift | 12.1, 11 |
-| Reconcile | Resolve drift via auto/alert/quarantine | 12.1, 11.5 |
+| Phase     | Operation                                                      | Spec section |
+|-----------|----------------------------------------------------------------|--------------|
+| Define    | Author/edit `.policy` files                                    | 12.1         |
+| Analyze   | Validate policy set (satisfiability, contradiction, isolation) | 12.1, 8      |
+| Compile   | Generate SQL from normalized policies                          | 12.1, 10     |
+| Apply     | Execute compiled SQL against target database                   | 12.1         |
+| Monitor   | Introspect database and detect drift                           | 12.1, 11     |
+| Reconcile | Resolve drift via auto/alert/quarantine                        | 12.1, 11.5   |
 
 The TrustLogix discussion (Section 14 of `trust_logix_style_system_mvp_discussion`)
 reinforces this as the core operational loop: "Policy intent → compile →
@@ -181,14 +181,14 @@ implementation requirements above.  Each dimension is graded A–F, where:
 
 ### 2.1 Evaluation Matrix
 
-| Dimension | Python | Rust | TypeScript | Java/Kotlin | Go | Clojure |
-|-----------|--------|------|------------|-------------|-----|---------|
-| **SMT integration** | A | B | D | B+ | F | B+ |
-| **Parsing / grammar** | A | A- | B+ | A+ | B | A |
-| **AST / type modeling** | B | A | B- | B / B+ | B- | A |
-| **PostgreSQL client** | A | B+ | B+ | A | A | B+ |
-| **Prototyping speed** | A+ | C | B+ | B- | B | B+ |
-| **Packaging / distribution** | C+ | A+ | B+ | C | A+ | C |
+| Dimension                    | Python | Rust | TypeScript | Java/Kotlin | Go | Clojure |
+|------------------------------|--------|------|------------|-------------|----|---------|
+| **SMT integration**          | A      | B    | D          | B+          | F  | B+      |
+| **Parsing / grammar**        | A      | A-   | B+         | A+          | B  | A       |
+| **AST / type modeling**      | B      | A    | B-         | B / B+      | B- | A       |
+| **PostgreSQL client**        | A      | B+   | B+         | A           | A  | B+      |
+| **Prototyping speed**        | A+     | C    | B+         | B-          | B  | B+      |
+| **Packaging / distribution** | C+     | A+   | B+         | B-          | A+ | C+      |
 
 ### 2.2 Dimension Analysis
 
@@ -365,14 +365,43 @@ binary.  Cross-compilation is straightforward with `cross`.
 **TypeScript — B+**.  `pkg` or `bun build --compile` produce single binaries.
 Node.js runtime is bundled.
 
-**Java/Kotlin — C**.  Requires JVM on target machine, or GraalVM native-image
-compilation (which has significant constraints on reflection and dynamic
-class loading, potentially conflicting with Z3 JNI).
+**Java/Kotlin — B-**.  The JVM packaging story has improved materially since
+Java 16.  **jpackage** (stable since Java 16, refined through Java 25)
+produces native platform installers — `.dmg` on macOS, `.deb`/`.rpm` on
+Linux, `.msi` on Windows — that bundle a trimmed JVM runtime, requiring no
+pre-installed JVM on the target machine.  **z3-turnkey** packages the Z3
+native libraries for Linux (x86-64), macOS (x86-64 and ARM64), and Windows
+into a single Maven-publishable JAR with automatic extraction at runtime,
+eliminating the Z3 distribution problem for JVM languages.  A **Homebrew
+tap** is a viable distribution channel for jpackage-produced binaries on
+macOS.  **GraalVM native-image** is a potential further optimization: JNI is
+supported and enabled by default, and the tracing agent can capture JNI
+metadata for Z3 calls, but Z3 compatibility with native-image is unproven —
+this path carries risk and should not be assumed without validation.
+**Remaining gaps vs. Rust**: jpackage requires per-platform builds (no
+cross-compilation), package sizes are ~80 MB due to the bundled JVM, and JVM
+startup adds 0.5–2 seconds.  These are real costs but acceptable for a CLI
+tool that runs infrequently.
 
 **Go — A+**.  Single static binary.  But Go is disqualified by the SMT gap.
 
-**Clojure — C**.  Requires JVM.  GraalVM native-image is possible but
-constrained.  `uberjar` works for JVM-equipped environments.
+**Clojure — C+**.  Clojure runs on the JVM and inherits the same jpackage +
+z3-turnkey path described for Java/Kotlin: native installers with bundled
+JVM and auto-extracted Z3 libraries.  An `uberjar` serves JVM-equipped
+environments directly.  **GraalVM native-image** works with Clojure but adds
+complexity beyond the Java/Kotlin baseline: `--initialize-at-build-time` is
+required for Clojure's runtime initialization, `eval` and unrestricted
+dynamic class generation are unavailable, and community-maintained tooling
+(`clj-easy/graalvm-clojure`) fills gaps that the official GraalVM project
+does not cover.  Notably, **instaparse** and **core.match** — both central
+to this project's parsing and AST manipulation — are not in the official
+GraalVM compatibility matrix; they are likely compatible but unverified.
+**Babashka** (a GraalVM-compiled Clojure scripting runtime) is disqualified
+for the core engine because it does not support JNI and therefore cannot load
+Z3, but it could serve as a companion scripting tool for lightweight
+automation tasks.  Net: the jpackage path puts Clojure on par with
+Java/Kotlin, but the native-image path carries more unknowns, making the
+overall packaging story slightly weaker.
 
 ### 2.3 Disqualifications
 
@@ -510,12 +539,12 @@ or UI integration but is not an engine requirement.
 
 ### 3.3 Summary: PL/pgSQL as a Spectrum
 
-| Role | Where it runs | Separation preserved? | Recommended phase |
-|------|--------------|----------------------|-------------------|
-| A. Compilation target | Target DB | Yes (engine-managed) | PoC / Phase 1 |
-| B. Control DB logic | Control DB | Yes (engine-owned) | Phase 1+ |
-| C. Introspection helpers | Target DB | Partially | Phase 2+ |
-| D. Runtime policy functions | Target DB | Orthogonal | Phase 3+ |
+| Role                        | Where it runs | Separation preserved? | Recommended phase |
+|-----------------------------|---------------|-----------------------|-------------------|
+| A. Compilation target       | Target DB     | Yes (engine-managed)  | PoC / Phase 1     |
+| B. Control DB logic         | Control DB    | Yes (engine-owned)    | Phase 1+          |
+| C. Introspection helpers    | Target DB     | Partially             | Phase 2+          |
+| D. Runtime policy functions | Target DB     | Orthogonal            | Phase 3+          |
 
 PL/pgSQL is best understood as a **supplementary component**, not a primary
 implementation language.  Its role grows as the deployment model matures,
@@ -659,7 +688,7 @@ This section synthesizes the evaluation without making a recommendation.
 **Viable**:
 - **Python** — strongest prototyping story, best SMT API, weakest packaging
 - **Rust** — strongest type system and packaging, slowest to prototype
-- **Java/Kotlin** — best parser tooling (ANTLR), JVM dependency burden
+- **Java/Kotlin** — best parser tooling (ANTLR), moderate packaging overhead
 - **Clojure** — most natural AST manipulation, smallest talent pool
 
 ### 6.2 Key Trade-Off Axes
@@ -668,11 +697,18 @@ Three axes dominate the decision:
 
 #### Axis 1: SMT Integration Quality vs. Packaging Simplicity
 
-Python and Clojure (via Java interop) have the best SMT integration but the
-worst packaging stories.  Rust has excellent packaging but more friction with
-Z3.  This tension reflects a deeper divide: the SMT solver is a native C
-library, and languages that embrace native interop (Python, JVM) handle it
-more naturally than languages that optimize for static linking (Rust).
+Python has the best SMT integration but the weakest packaging story —
+`pyinstaller` bundles are fragile and the Z3 native dependency adds real
+complexity.  JVM languages (Java/Kotlin, Clojure) also have strong SMT
+integration via Z3's official Java bindings, and their packaging gap has
+narrowed: jpackage produces native installers requiring no pre-installed JVM,
+and z3-turnkey solves Z3 native library distribution.  The packaging tension
+is real but less acute than it was — Python, not JVM, is now the clear
+packaging laggard among viable candidates.  Rust has excellent packaging but
+more friction with Z3.  This tension reflects a deeper divide: the SMT
+solver is a native C library, and languages that embrace native interop
+(Python, JVM) handle it more naturally than languages that optimize for
+static linking (Rust).
 
 #### Axis 2: Prototyping Speed vs. Long-Term Maintenance
 
@@ -697,12 +733,12 @@ PL/pgSQL's role (Section 3) is the same regardless of which language
 implements the core engine.  However, the deployment model affects how
 PL/pgSQL integrations are managed:
 
-| Candidate | PL/pgSQL management approach |
-|-----------|------------------------------|
-| **Python** | Generate `.sql` files from Python; execute via `psycopg` |
-| **Rust** | Generate `.sql` files; execute via `tokio-postgres`; embed SQL in binary via `include_str!` |
+| Candidate       | PL/pgSQL management approach                                                                 |
+|-----------------|----------------------------------------------------------------------------------------------|
+| **Python**      | Generate `.sql` files from Python; execute via `psycopg`                                     |
+| **Rust**        | Generate `.sql` files; execute via `tokio-postgres`; embed SQL in binary via `include_str!`  |
 | **Java/Kotlin** | Generate `.sql` files; execute via JDBC; could use Flyway/Liquibase for migration management |
-| **Clojure** | Generate `.sql` strings from Clojure data; execute via `next.jdbc`; SQL as data is idiomatic |
+| **Clojure**     | Generate `.sql` strings from Clojure data; execute via `next.jdbc`; SQL as data is idiomatic |
 
 All four candidates can generate and execute PL/pgSQL equally well.  The
 choice of core language does not constrain PL/pgSQL's supplementary roles.
@@ -712,14 +748,14 @@ choice of core language does not constrain PL/pgSQL's supplementary roles.
 For each viable candidate, the estimated PoC scope (Section 7) breaks down
 roughly as follows:
 
-| Component | Python | Rust | Java/Kotlin | Clojure |
-|-----------|--------|------|-------------|---------|
-| Parser | 1–2 days (lark) | 2–3 days (pest) | 2–3 days (ANTLR) | 1–2 days (instaparse) |
-| AST + normalization | 2–3 days | 3–5 days | 3–4 days | 2–3 days |
-| SMT encoding + isolation proof | 2–3 days | 3–4 days | 3–4 days | 2–3 days |
-| SQL compilation | 1–2 days | 2–3 days | 2–3 days | 1–2 days |
-| Drift detection | 1–2 days | 2–3 days | 2–3 days | 1–2 days |
-| **Total** | **7–12 days** | **12–18 days** | **12–17 days** | **7–12 days** |
+| Component                      | Python          | Rust            | Java/Kotlin      | Clojure               |
+|--------------------------------|-----------------|-----------------|------------------|-----------------------|
+| Parser                         | 1–2 days (lark) | 2–3 days (pest) | 2–3 days (ANTLR) | 1–2 days (instaparse) |
+| AST + normalization            | 2–3 days        | 3–5 days        | 3–4 days         | 2–3 days              |
+| SMT encoding + isolation proof | 2–3 days        | 3–4 days        | 3–4 days         | 2–3 days              |
+| SQL compilation                | 1–2 days        | 2–3 days        | 2–3 days         | 1–2 days              |
+| Drift detection                | 1–2 days        | 2–3 days        | 2–3 days         | 1–2 days              |
+| **Total**                      | **7–12 days**   | **12–18 days**  | **12–17 days**   | **7–12 days**         |
 
 These are single-developer estimates for the PoC scope defined below, not
 for a production implementation.
@@ -951,27 +987,27 @@ wildcard.  The PoC must determine whether `_` is:
 
 Every requirement in Section 1 traces to the spec:
 
-| Requirement | Spec sections |
-|-------------|--------------|
-| DSL parsing | 2.1–2.3, 3.1, 4.1, 6.1, 7.1–7.2, 13 |
-| AST normalization | 2.3–2.4, 3.2, 9.1–9.5 |
-| SMT integration | 2.5, 8.1–8.5 |
-| SQL generation | 10.1–10.7 |
-| PostgreSQL introspection | 6.2, 11.1, 11.4 |
-| Diff / reconciliation | 11.2–11.5 |
-| Policy storage | 12.1 |
-| Governance loop | 12.1–12.5 |
+| Requirement              | Spec sections                       |
+|--------------------------|-------------------------------------|
+| DSL parsing              | 2.1–2.3, 3.1, 4.1, 6.1, 7.1–7.2, 13 |
+| AST normalization        | 2.3–2.4, 3.2, 9.1–9.5               |
+| SMT integration          | 2.5, 8.1–8.5                        |
+| SQL generation           | 10.1–10.7                           |
+| PostgreSQL introspection | 6.2, 11.1, 11.4                     |
+| Diff / reconciliation    | 11.2–11.5                           |
+| Policy storage           | 12.1                                |
+| Governance loop          | 12.1–12.5                           |
 
 Every evaluation dimension in Section 2 ties to a specific requirement:
 
-| Dimension | Requirement | Critical spec sections |
-|-----------|------------|----------------------|
-| SMT integration | 1.3 | 8.1–8.5 |
-| Parsing / grammar | 1.1 | 13 |
-| AST / type modeling | 1.2 | 2–3, 9 |
-| PostgreSQL client | 1.5, 1.6 | 11 |
-| Prototyping speed | PoC (Section 7) | All |
-| Packaging | 1.8 (CLI deployment) | 12 |
+| Dimension           | Requirement          | Critical spec sections |
+|---------------------|----------------------|------------------------|
+| SMT integration     | 1.3                  | 8.1–8.5                |
+| Parsing / grammar   | 1.1                  | 13                     |
+| AST / type modeling | 1.2                  | 2–3, 9                 |
+| PostgreSQL client   | 1.5, 1.6             | 11                     |
+| Prototyping speed   | PoC (Section 7)      | All                    |
+| Packaging           | 1.8 (CLI deployment) | 12                     |
 
 ---
 
